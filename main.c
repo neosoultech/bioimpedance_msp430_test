@@ -65,6 +65,9 @@
                                 // INTERRUPT HANDLER
 // external interrupts from P2.0 (ST25 GPO): Indicates phone interaction, sets phone_flag
 // external interrupts from P2.1 (MAX30002 INTB): Indicates data ready / FIFO event, sets max_flag
+volatile int32_t debug_bioz = 0; // debugging
+volatile uint32_t sample_count = 0 // debugging
+
 volatile int phone_flag = 0;
 volatile int max_flag = 0;
 #pragma vector=PORT2_VECTOR
@@ -448,6 +451,10 @@ int main(void)
 	                        while (status & MAX_STATUS_BINT) { // if FIFO here
 	                            raw = max30002_read_fifo(); // read it
 	                            bioz = bioz_parse(raw); // parse data
+
+	                            debug_bioz = bioz; // debug; latest parsed value
+	                            sample_count++; // debug; count samples recieved
+
 	                            uint8_t tag = (raw >> 18) & 0x3F; // Debug: extract tag bits if needed
 	                            LED_TOGGLE(); // if successful read, blink if FIFO producing data
 	                            status = max30002_read_status(); // check if there are more samples to read
