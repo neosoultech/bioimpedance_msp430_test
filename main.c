@@ -66,7 +66,7 @@
 // external interrupts from P2.0 (ST25 GPO): Indicates phone interaction, sets phone_flag
 // external interrupts from P2.1 (MAX30002 INTB): Indicates data ready / FIFO event, sets max_flag
 volatile int32_t debug_bioz = 0; // debugging
-volatile uint32_t sample_count = 0 // debugging
+volatile uint32_t sample_count = 0; // debugging
 
 volatile int phone_flag = 0;
 volatile int max_flag = 0;
@@ -121,10 +121,11 @@ __interrupt void Port_2_ISR(void)
 #define MAX_CNFG_GEN_RBIASV_100M (1UL << 2)  // RBIASV[1:0] = 01, 100M ohm bias
 #define MAX_CNFG_GEN_RBIASP      (1UL << 1)  // enable bias on BIP
 #define MAX_CNFG_GEN_RBIASN      (1UL << 0)  // enable bias on BIN
-#define MAX_CFG_CNFG_GEN_START   (MAX_CNFG_GEN_EN_BIOZ      | // CNFG_GEN starting settings
-                                   MAX_CNFG_GEN_EN_RBIAS    |
-                                   MAX_CNFG_GEN_RBIASV_100M |
-                                   MAX_CNFG_GEN_RBIASP      |
+// CNFG_GEN starting settings for BIOZ, RBIAS, 100M, RBIASP, and RBIASN //
+#define MAX_CFG_CNFG_GEN_START   (MAX_CNFG_GEN_EN_BIOZ      | \
+                                   MAX_CNFG_GEN_EN_RBIAS    | \
+                                   MAX_CNFG_GEN_RBIASV_100M | \
+                                   MAX_CNFG_GEN_RBIASP      | \
                                    MAX_CNFG_GEN_RBIASN)
     // CNFG_BMUX
 #define MAX_BMUX_OPENP_BIT        (1UL << 21) // bit is 1 when BIP isolated
@@ -147,17 +148,18 @@ __interrupt void Port_2_ISR(void)
 #define MAX_BIOZ_CGMON_OFF       (0UL << 7)
 #define MAX_BIOZ_CGMAG_TEST      (3UL << 4)
 #define MAX_BIOZ_PHOFF_0         (0UL << 0)
-#define MAX_CFG_CNFG_BIOZ_START  (MAX_BIOZ_RATE_32SPS  | // 32 samples per second to save power
-                                  MAX_BIOZ_AHPF_800HZ  | // HPF below our 8KHz frequency target
-                                  MAX_BIOZ_USE_INTERNAL_BIASGEN   | // Use MAX30002 internal bias generator instead of external resistor
-                                  MAX_BIOZ_LOW_NOISE   | // Low noise mode (cleaner data, but more power)
-                                  MAX_BIOZ_GAIN_10     | // 10 V/V gain; testing lowest 1st
-                                  MAX_BIOZ_DHPF_0P05HZ | // Digital HPF to preserve slower trends
-                                  MAX_BIOZ_DLPF_4HZ    | // Digital LPF to reduce noise and output bandwidth
-                                  MAX_BIOZ_FCGEN_8192HZ| // 8.192KHz generated current frequency, closest to 10KHz (wanted previously)
-                                  MAX_BIOZ_CGMON_OFF   | // Current generator compliance monitor OFF. Diagnostic for later
-                                  MAX_BIOZ_CGMAG_TEST  | // 32uA injected current magnitude. Using middle low value.
-                                  MAX_BIOZ_PHOFF_0) // No phase offset
+#define MAX_CFG_CNFG_BIOZ_START  (\
+    MAX_BIOZ_RATE_32SPS             | /* 32 samples per second to save power */ \
+    MAX_BIOZ_AHPF_800HZ             | /* HPF below our 8KHz frequency target */ \
+    MAX_BIOZ_USE_INTERNAL_BIASGEN   | /* Use MAX30002 internal bias generator instead of external resistor */ \
+    MAX_BIOZ_LOW_NOISE              | /* Low noise mode (cleaner data, but more power) */ \
+    MAX_BIOZ_GAIN_10                | /* 10 V/V gain; testing lowest 1st */ \
+    MAX_BIOZ_DHPF_0P05HZ            | /* Digital HPF to preserve slower trends */ \
+    MAX_BIOZ_DLPF_4HZ               | /* Digital LPF to reduce noise and output bandwidth */ \
+    MAX_BIOZ_FCGEN_8192HZ           | /* 8.192KHz generated current frequency, closest to 10KHz (wanted previously) */ \
+    MAX_BIOZ_CGMON_OFF              | /* Current generator compliance monitor OFF. Diagnostic for later */ \
+    MAX_BIOZ_CGMAG_TEST             | /* 32uA injected current magnitude. Using middle low value. */ \
+    MAX_BIOZ_PHOFF_0)                 /* No phase offset */
 
                                     //
 
@@ -486,7 +488,7 @@ void i2c_init() { // initializing I2C sequence
 
     UCB0CTLW0 |= UCMODE_3 | // enabling I2C mode (11)
                  UCMST    | // enabling master mode (generating clock, initializing comms)
-                 UCSSEL_SMCLK; // enable clock
+                 UCSSEL__SMCLK; // enable clock
 
     UCB0BRW = 10; // clock speed set to 100 KHz
     UCB0CTLW0 &= ~UCSWRST; // enabling system
@@ -574,7 +576,8 @@ void enable_mailbox (void) {
 }
 
 void mailbox_write(uint8_t *message, int length) { // write message bytes into ST25DV mailbox buffer
-    for (int i = 0; i < length; i++) { // loop to write serially to mailbox (one byte at a time)
+    int i;
+    for (i = 0; i < length; i++) { // loop to write serially to mailbox (one byte at a time)
         st25dv_write(ST25DV_ADDR_USER, ST25DV_MAILBOX_BASE + i, message[i]); // must start writing at x2008 (start of mailbox buffer)
     }
 }
@@ -594,7 +597,7 @@ void spi_init(void) { // clock idle low
                  UCMST    | // master mode
                  UCMSB    | // MSB 1st
                  UCCKPH   | // data changed on 1st clock edge
-                 UCSSEL_SMCLK; // enable clock
+                 UCSSEL__SMCLK; // enable clock
 
     UCA0BRW = 10; // clock speed set to 100kHz
     UCA0CTLW0 &= ~UCSWRST;   // begin SPI
@@ -606,12 +609,10 @@ void max_int_init() {
     P2OUT |= BIT1; // enable pull-up
 
     P2IES |= BIT1; // detect interrupt on falling edge (1 to 0)
-    P2IFG &= ~BIT1; // clear interrupt flag
     P2IE |= BIT1; // enable P2.1 interrupt
 }
 
 void fclk_init(void) { // helper function to set up ACLK between MCU and MAX30002
-    CSCTL4 &= ~SELA_7;
     CSCTL4 |= SELA__REFOCLK; // set ACLK source to REFO (~32 KHz)
 
     P2DIR |= BIT2; // 2.2 becomes output
