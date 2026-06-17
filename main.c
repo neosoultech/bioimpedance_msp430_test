@@ -514,7 +514,7 @@ int check_nack(void) { // helper function to check NACK
         while (UCB0CTLW0 & UCTXSTP); // wait for STOP command to go through before ending loop
         return 1; // NACK occurred
     }
-    return 0; // no error
+    return 0; // no NACK
 }
 
 void wait_tx_ready(void) { // helper function to wait until TX buf ready
