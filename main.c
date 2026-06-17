@@ -484,7 +484,7 @@ void i2c_pins_init() { //initializing communication pins on MSP430
 }
 
 void i2c_init() { // initializing I2C sequence
-    UCB0CTLW0 |= UCSWRST; // reset I2C. Going to set bits within CTL (control register)
+    UCB0CTLW0 = UCSWRST; // completely reset I2C registers. Going to set bits within CTL (control register)
 
     UCB0CTLW0 |= UCMODE_3 | // enabling I2C mode (11)
                  UCMST    | // enabling master mode (generating clock, initializing comms)
@@ -591,7 +591,7 @@ void spi_pins_init(void) {
 }
 
 void spi_init(void) { // clock idle low
-    UCA0CTLW0 |= UCSWRST; // reset SPI
+    UCA0CTLW0 = UCSWRST; // completely reset SPI
     UCA0CTLW0 |= UCMODE_0 | // enabling SPI mode
                  UCSYNC   | // synchronous mode
                  UCMST    | // master mode
