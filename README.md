@@ -9,7 +9,9 @@ This project uses an MSP430FR2433 MCU to interface with two devices:
 
 Development was done using Code Composer Studio (CCS) version 12.8.1.
 
-The system is interrupt-driven. External events set flags, and the main loop handles processing.
+Each test runs inside an infinite loop. Interrupts set flags that are handled within the active test.
+
+
 
 Main goals:
 - bring up MAX30002 BioZ sensing  
