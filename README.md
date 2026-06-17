@@ -2,10 +2,10 @@
 
 ## Overview
 
-This project uses an MSP430 MCU to interface with two devices:
+This project uses an MSP430FR2433 MCU to interface with two devices:
 
 - MAX30002 for bioimpedance (BioZ) measurement  
-- ST25DV for NFC communication  
+- ST25DV-04K for NFC communication  
 
 Development was done using Code Composer Studio (CCS) version 12.8.1.
 
