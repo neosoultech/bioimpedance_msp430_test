@@ -82,6 +82,9 @@ __interrupt void Port_2_ISR(void)
         max_flag = 1; // enable max flag
         P2IFG &= ~BIT1; // clear interrupt flag
     }
+#if USE_LPM
+    __bic_SR_register_on_exit(LPM0_bits); // exiting LPM upon interrupt
+#endif
 }
                                             //
 
@@ -192,6 +195,8 @@ __interrupt void Port_2_ISR(void)
 #define TEST_MAX_CONFIG      0
 #define TEST_MAX_START       0
 #define TEST_MAX_READ        0
+
+#define USE_LPM              0 // 0 = Normal (debug), 1 = low power
                                         //
 
                         // OTHER MACROS (DON'T CHANGE)
@@ -468,7 +473,11 @@ int main(void)
     #endif // ends test chain
     #endif // end program
 
+#if USE_LPM
+	__bis_SR_register(LPM0_bits | GIE); // enter low power mode, enable interrupts
+#else
 	    __delay_cycles(200000); // delay by 0.2s
+#endif
 	}
 }
 
