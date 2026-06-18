@@ -61,6 +61,7 @@
 
 #include <msp430.h>
 #include <stdint.h>
+#define USE_LPM              0 // 0 = Normal (debug), 1 = low power
 
                                 // INTERRUPT HANDLER
 // external interrupts from P2.0 (ST25 GPO): Indicates phone interaction, sets phone_flag
@@ -196,7 +197,6 @@ __interrupt void Port_2_ISR(void)
 #define TEST_MAX_START       0
 #define TEST_MAX_READ        0
 
-#define USE_LPM              0 // 0 = Normal (debug), 1 = low power
                                         //
 
                         // OTHER MACROS (DON'T CHANGE)
@@ -618,7 +618,13 @@ void max_int_init() {
     P2OUT |= BIT1; // enable pull-up
 
     P2IES |= BIT1; // detect interrupt on falling edge (1 to 0)
+    P2IFG &= ~BIT1; // clear stale interrupt flag
     P2IE |= BIT1; // enable P2.1 interrupt
+
+    if (!(P2IN & BIT1)) { // if P2.1 reads as 0, INTB is alr active, so set max_flag manually
+            max_flag = 1;
+        }
+
 }
 
 void fclk_init(void) { // helper function to set up ACLK between MCU and MAX30002
