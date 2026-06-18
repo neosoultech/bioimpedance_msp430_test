@@ -184,7 +184,8 @@ Only one test should be enabled at a time.
 Next steps:
 
 - Test on hardware
-- implement full system behavior  
+- implement full system behavior
+- If the code ever appears to freeze or hang during I2C/SPI testing, add timeout handling to the blocking wait loops (`wait_tx_ready()`, `wait_rx_ready()`, SPI TX/RX flag waits, and I2C STOP/START waits) so the MCU can fail gracefully instead of waiting forever.
 
 ---
 
