@@ -605,7 +605,7 @@ void spi_init(void) { // clock idle low
                  UCSYNC   | // synchronous mode
                  UCMST    | // master mode
                  UCMSB    | // MSB 1st
-                 UCCKPH   | // data changed on 1st clock edge
+                 UCCKPH   | // data captured on 1st clock edge, changed at following edge. Data sampled on rising edge.
                  UCSSEL__SMCLK; // enable clock
 
     UCA0BRW = 10; // clock speed set to 100kHz
