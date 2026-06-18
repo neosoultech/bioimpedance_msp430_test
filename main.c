@@ -462,7 +462,7 @@ int main(void)
 	                            debug_bioz = bioz; // debug; latest parsed value
 	                            sample_count++; // debug; count samples recieved
 
-	                            uint8_t tag = (raw >> 18) & 0x3F; // Debug: extract tag bits if needed
+	                            uint8_t tag = raw & 0x07; // Debug: extract tag bits if needed
 	                            LED_TOGGLE(); // if successful read, blink if FIFO producing data
 	                            status = max30002_read_status(); // check if there are more samples to read
 	                        }
@@ -690,10 +690,10 @@ uint32_t max30002_read_fifo(void) { // reads BIOZ FIFO at register 0x23. Uses sa
     return max30002_read_reg(MAX_REG_FIFO);
 }
 
-int32_t bioz_parse(uint32_t raw) { // helper function to parse bioZ data. Bits [23:18] are status bits and bits [17:0] are the data.
-    int32_t data = (int32_t)(raw & 0x3FFFF);// extracting only data bits from container [17:0]
-    if (data & 0x20000) // if upper bit is 1 (negative)
-        data |= 0xFFFC0000; // sign extending if negative to make proper 32-bit signed
+int32_t bioz_parse(uint32_t raw) { // helper function to parse bioZ data. Bits [2:0] are status bits and bits [23:4] are the data.
+    int32_t data = (int32_t)(raw >> 4)  & 0xFFFFF; // extract 20-bit signed BioZ sample
+    if (data & 0x80000) // if bit 19 is 1 (negative)
+        data |= 0xFFF00000; // sign-extend 20-bit value to 32-bit signed int
     return (int32_t) data; // returning the parsed data bits
 }
 
