@@ -142,7 +142,7 @@ __interrupt void Port_2_ISR(void)
 
     // MAX30002 CNFG_BIOZ field values for near-10kHz BioZ start
 #define MAX_BIOZ_RATE_32SPS      (1UL << 23)
-#define MAX_BIOZ_AHPF_800HZ      (2UL << 20)
+#define MAX_BIOZ_AHPF_BYPASS   (6UL << 20)
 #define MAX_BIOZ_USE_INTERNAL_BIASGEN (0UL << 19)
 #define MAX_BIOZ_LOW_NOISE       (1UL << 18)
 #define MAX_BIOZ_GAIN_10         (0UL << 16)
@@ -154,7 +154,7 @@ __interrupt void Port_2_ISR(void)
 #define MAX_BIOZ_PHOFF_0         (0UL << 0)
 #define MAX_CFG_CNFG_BIOZ_START  (\
     MAX_BIOZ_RATE_32SPS             | /* 32 samples per second to save power */ \
-    MAX_BIOZ_AHPF_800HZ             | /* HPF below our 8KHz frequency target */ \
+    MAX_BIOZ_AHPF_BYPASS             |/* AHPF[2:0] = 110, bypass analog HPF. Measurements are more accurate on low freq with HPF disabled. */ \
     MAX_BIOZ_USE_INTERNAL_BIASGEN   | /* Use MAX30002 internal bias generator instead of external resistor */ \
     MAX_BIOZ_LOW_NOISE              | /* Low noise mode (cleaner data, but more power) */ \
     MAX_BIOZ_GAIN_10                | /* 10 V/V gain; testing lowest 1st */ \
