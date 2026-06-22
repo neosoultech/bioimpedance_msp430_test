@@ -156,11 +156,11 @@ Only one test should be enabled at a time.
 ### ST25DV Tests
 
 1. TEST_ST25_WRITE  
-   writes a byte to EEPROM  
-   confirms I2C write is working  
+   writes a byte to EEPROM scratch address 0x01F0  
+   confirms basic I2C write is working  
 
 2. TEST_ST25_READ  
-   writes and reads back a value  
+   writes and reads back a value from EEPROM scratch address 0x01F0 
    verifies full read/write operation  
 
 3. TEST_ST25_GPO  
@@ -168,8 +168,9 @@ Only one test should be enabled at a time.
    verifies interrupt path and phone detection  
 
 4. TEST_ST25_MAILBOX  
-   writes data to mailbox  
-   verifies communication with phone  
+   enables FTM/mailbox
+   writes one full mailbox message starting at 0x2008 
+   verifies mailbox communication with phone/ST25 NFC Tap
 
 ---
 
@@ -178,7 +179,12 @@ Only one test should be enabled at a time.
 - Tests should be run in order  
 - Earlier tests validate basic communication  
 - Later tests depend on previous functionality  
-- Phone is required for GPO and mailbox testing  
+- Phone is required for GPO and mailbox testing
+- EEPROM tests are only for basic I2C bring-up
+- Mailbox testing should use TEST_ST25_MAILBOX
+- TEST_ST25_MAILBOX writes to the FTM mailbox, not normal EEPROM NDEF memory
+- Use ST25 NFC Tap features for ST25DV / Fast Transfer Mode when checking mailbox data
+
 
 ---
 
