@@ -48,7 +48,7 @@ All processing happens in the main loop.
 
 ## MAX30002 Operation
 
-The MAX30002 generates BioZ samples and stores them in a FIFO. Additionally, note that the analog high-pass filter is currently bypassed for better low-frequency BioZ accuracy.
+The MAX30002 generates BioZ samples and stores them in a FIFO.
 
 Basic sequence:
 
