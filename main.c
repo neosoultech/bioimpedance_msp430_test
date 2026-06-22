@@ -12,7 +12,8 @@
 // Note: FCLK must be present or no data generated, FIFO must be drainer to prevent overflow, data interrupt-driven
 //
 // MAX30002 FIFO FORMAT:
-// 24 bit word: bits [23:18] are tag/status, bits [17:0] are 18-bit signed BioZ data (2SC)
+// 24 bit word: bits [23:4] are 20-bit signed BioZ sample (2SC), bit [3]: zero padding, bits [2:0]: BTAG status tag
+// BTAG: 000 valid, 001 over/under range, 010 valid EOF, 011 over/under EOF
 // Note: Must mask lower 18 bits and sign extend bit 17
 
 
@@ -107,8 +108,8 @@ __interrupt void Port_2_ISR(void)
 #define MAX_REG_FIFO        0x23
 
 //STATUS
-#define MAX_STATUS_BINT   (1UL << 23)  // BioZ FIFO interrupt
-#define MAX_STATUS_BOVF   (1UL << 22)
+#define MAX_STATUS_BINT   (1UL << 19)  // BioZ FIFO interrupt
+#define MAX_STATUS_BOVF   (1UL << 18)
 
 // EN_INT bits
 #define MAX_EN_INT_BINT     (1UL << 19) // enable BIOZ FIFO interrupt on external INTB pin
@@ -409,7 +410,8 @@ int main(void)
 	                ((gen_read & MAX_CFG_CNFG_GEN_START) == MAX_CFG_CNFG_GEN_START) &&
 	                ((bmux_read & (MAX_BMUX_OPENP_BIT | MAX_BMUX_OPENN_BIT)) == 0) &&
 	                (bioz_read == MAX_CFG_CNFG_BIOZ_START)) {
-	        for (int i = 0; i < 6; i++) {
+	        int i;
+	        for (i = 0; i < 6; i++) {
 	                        led_blink_measuring(); // Blink while measuring if success
 	                    }
 
@@ -452,22 +454,37 @@ int main(void)
 	                        max_flag = 0; // reset flag
 	                        status = max30002_read_status(); // read its status
 
-	                        if (status & MAX_STATUS_BOVF) { // checking first for overflow
+	                        if (status & MAX_STATUS_BOVF) { // checking first for global overflow
 	                            max30002_fifo_reset();
+	                            continue; // go back to waiting for next MAX interrupt
 	                        }
 	                        while (status & MAX_STATUS_BINT) { // if FIFO here
 	                            raw = max30002_read_fifo(); // read it
-	                            bioz = bioz_parse(raw); // parse data
 
-	                            debug_bioz = bioz; // debug; latest parsed value
-	                            sample_count++; // debug; count samples recieved
-
-	                            uint8_t tag = raw & 0x07; // Debug: extract tag bits if needed
-	                            LED_TOGGLE(); // if successful read, blink if FIFO producing data
+	                            uint8_t tag = raw & 0x07;  // extract BTAG bits (bottom 3)
+	                            if (tag == 0x07) { // 111: FIFO overflow
+	                            max30002_fifo_reset();
+	                            break;
+	                            }
+	                            if (tag == 0x06) { // 110: Empty
+	                                break; // skip to get more data
+	                            }
+	                            if (tag == 0x00 || tag == 0x02) { // Cases of guaranteed valid data
+	                                bioz = bioz_parse(raw);
+	                                debug_bioz = bioz;
+	                                sample_count++; // debug; count samples recieved
+	                                LED_TOGGLE(); // if successful read, blink if FIFO producing data
+	                            }
+	                            else if (tag == 0x01 || tag == 0x03){ // Over-under. Cases of questionably valid data
+	                                bioz = bioz_parse(raw);
+	                                debug_bioz = bioz;
+	                            }
+	                            if (tag == 0x02 || tag == 0x03) { // if EOF, stop draining FIFO
+	                                break;
+	                            }
 	                            status = max30002_read_status(); // check if there are more samples to read
 	                        }
-
-	                        }
+	                      }
 	                    }
 
     #endif // ends test chain
