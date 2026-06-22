@@ -14,7 +14,7 @@
 // MAX30002 FIFO FORMAT:
 // 24 bit word: bits [23:4] are 20-bit signed BioZ sample (2SC), bit [3]: zero padding, bits [2:0]: BTAG status tag
 // BTAG: 000 valid, 001 over/under range, 010 valid EOF, 011 over/under EOF
-// Note: Must mask lower 18 bits and sign extend bit 17
+// Note: Extract bits [23:4], mask 20 bits, and sign extend bit 19.
 
 
                                 // ST25 Information
@@ -24,13 +24,9 @@
 // Note: GPO requires pull-up resistor, mailbox must be enabled before use
 //
 // ST25 MAILBOX FORMAT:
-// Byte stream: [mem_addr_MSB][mem_addr_LSB][data_byte] --> Sends this for each data byte
-// mem_addr_MSB: upper 8 bits of memory address
-// mem_addr_LSB: lower 8 bits of memory address
-// data_byte: sends 8 bits of data at a time.
-// Data written as linear byte array [Byte 0], [Byte 1], ... [Byte N]
-// Example (NDEF text message):  Byte 0: NDEF header, Byte 1: type length, Byte 2: payload length, Byte 3: type field ('T'), Byte 4+: language + message payload
-// Note: Uses 16-bit memory address space (2 bytes total)
+// I2C mailbox message write must be one sequential write starting at 0x2008:
+// [addr_MSB = 0x20][addr_LSB = 0x08][data0][data1]...[dataN]
+// ST25DV automatically updates mailbox length/status after a successful message write.
 
 
                             // MSP430 Information
@@ -169,19 +165,46 @@ __interrupt void Port_2_ISR(void)
                                     //
 
                              // ST25DV REGISTER MAP //
+
 // ST25DV I2C addresses
-#define ST25DV_ADDR_USER       0x53
-#define ST25DV_ADDR_SYSTEM     0x57
+// MSP430 uses 7-bit slave addresses.
+// ST25DV device select code: 1010 E2 1 1 R/W
+// E2 = 0 -> user memory, dynamic registers, mailbox
+// E2 = 1 -> system configuration area
+#define ST25DV_ADDR_USER              0x53
+#define ST25DV_ADDR_SYSTEM            0x57
 
-// ST25DV register addresses
-#define ST25DV_TEST_EEPROM_ADDR         0x0000
-#define ST25DV_REG_MB_MODE     0x000D
+// ST25DV user EEPROM test address
+#define ST25DV_TEST_EEPROM_ADDR       0x01F0
 
-// ST25DV mailbox memory
-#define ST25DV_MAILBOX_BASE    0x2008
+// ST25DV static system configuration register, E2 = 1
+#define ST25DV_REG_MB_MODE            0x000D
+
+// ST25DV I2C password command address, E2 = 1
+#define ST25DV_I2C_PWD_ADDR           0x0900
+#define ST25DV_PRESENT_PWD_CODE       0x09
+
+// ST25DV dynamic registers, E2 = 0
+#define ST25DV_REG_I2C_SSO_DYN        0x2004
+#define ST25DV_REG_MB_CTRL_DYN        0x2006
+#define ST25DV_REG_MB_LEN_DYN         0x2007
+
+// ST25DV mailbox memory, E2 = 0
+#define ST25DV_MAILBOX_BASE           0x2008
+#define ST25DV_MAILBOX_MAX_LEN        256
 
 // ST25DV bit masks
-#define ST25DV_MB_MODE_ENABLE  0x01
+#define ST25DV_MB_MODE_ENABLE         0x01
+
+// MB_CTRL_Dyn bits
+#define ST25DV_MB_CTRL_MB_EN          0x01
+#define ST25DV_MB_CTRL_HOST_PUT_MSG   0x02
+#define ST25DV_MB_CTRL_RF_PUT_MSG     0x04
+
+// I2C_SSO_Dyn bits
+#define ST25DV_I2C_SSO_OPEN           0x01
+
+
                                         //
 
                       //TEST MODE MACROS. ONLY 1 AT A TIME CAN BE ENABLED. //
@@ -218,11 +241,15 @@ void led_pulse_transmission(void);
 void led_idle(void);
 uint8_t st25dv_read(uint8_t slave, uint16_t addr);
 void gpo_init();
-void mailbox_write(uint8_t *message, int length);
+int mailbox_write(uint8_t *message, unsigned int length);
 int check_nack();
 void wait_tx_ready();
 int i2c_send_and_check(uint8_t byte);
-void enable_mailbox(void);
+int enable_mailbox(void);
+int st25dv_present_i2c_password(void);
+int st25dv_i2c_session_is_open(void);
+int st25dv_mailbox_is_free(void);
+int st25dv_write_sequence(uint8_t slave, uint16_t mem_addr, uint8_t *data, unsigned int length);
 void max_int_init(void);
 void wait_rx_ready(void);
 void spi_init(void);
@@ -257,7 +284,11 @@ int main(void)
 	fclk_init();
 	gpo_init();
 	max_int_init();
-	enable_mailbox(); // enabling mailbox (can still use EEPROM while on)
+#if TEST_ST25_MAILBOX
+	if (!enable_mailbox()) { // only enable FTM/mailbox when running mailbox test. No FTM during EEPROM tests
+	    error_handler();
+	}
+#endif
 	__enable_interrupt(); // enabling global interrupts
 
 
@@ -267,7 +298,7 @@ int main(void)
 
 
     #if TEST_ST25_WRITE // TEST 1: MCU WRITE --> ST25
-	    if (st25dv_write(ST25DV_ADDR_USER, ST25DV_TEST_EEPROM_ADDR, 0xAA)) { // sending test byte 0xAA to address 0x0000 on ST25DV (slave addr 0x53). Checking to see if successful (ST25DV will respond)
+	    if (st25dv_write(ST25DV_ADDR_USER, ST25DV_TEST_EEPROM_ADDR, 0xAA)) { // sending test byte 0xAA to address 0x01F0 on ST25DV (slave addr 0x53). Checking to see if successful (ST25DV will respond)
 	                led_pulse_transmission(); // pulse LED if transmission success
 	                }
 	            else {
@@ -276,9 +307,9 @@ int main(void)
 
     #elif TEST_ST25_READ // TEST 2: MCU READ <-- ST25
 	    uint8_t val; // declare value variable
-	    st25dv_write(ST25DV_ADDR_USER, ST25DV_TEST_EEPROM_ADDR, 0xAA); // write 0xAA to 0x0000 on st25dv
+	    st25dv_write(ST25DV_ADDR_USER, ST25DV_TEST_EEPROM_ADDR, 0xAA); // write 0xAA to 0x01F0 on st25dv
 	    __delay_cycles(1000000); // 1s to wait for it to store in mem
-	    val = st25dv_read(ST25DV_ADDR_USER, ST25DV_TEST_EEPROM_ADDR); // reading it back from 0x0000
+	    val = st25dv_read(ST25DV_ADDR_USER, ST25DV_TEST_EEPROM_ADDR); // reading it back from 0x01F0
 	    if (val == 0xAA){
 	        led_pulse_transmission(); // pulse LED for success
 	    }
@@ -302,26 +333,27 @@ int main(void)
 	            uint8_t msg[] = {
 	                0xD1, // NDEF header byte to tell phone it's NFC text
 	                0x01, // length of type field
-	                0x14, // payload length (1 status byte + 2 "en" + 17 message length)
+	                0x15, // payload length (1 status byte + 2 "en" + 18 message length)
 
 	                'T', // type field T for text
 
-	                0x02, 'e', 'n', // language code (english, 2 chars)
+	                0x02, 'e', 'n', // status byte, then language code (english, 2 chars)
 
 	                'H','e','l','l','o',' ', // message
 	                'f','r','o','m',' ',
 	                'M','S','P','4','3','0','!'
 	            };
 
-	            mailbox_write(msg, sizeof(msg)); // write to mailbox
-
-
-	            led_pulse_transmission(); // if success, pulse
-
-	                    __delay_cycles(200000);
-	                }
+	            if (mailbox_write(msg, sizeof(msg))) { // write to mailbox
+	               led_pulse_transmission(); // if success, pulse
+	            }
 	                else {
-	                    led_idle(); // no phone/event, remains off
+	                   error_handler();
+	                }
+	            __delay_cycles(200000);
+	                }
+	                else { // if no phone flag
+	                    led_idle();
 	                }
 
     #elif TEST_MAX_SPI // TEST 5: Basic MAX30002 SPI connection test. Checks to see if reads anything from INFO
@@ -556,6 +588,66 @@ int i2c_send_and_check(uint8_t byte) { // sends a byte and checks to see if reci
         wait_tx_ready(); // waiting here until byte done sending
         return check_nack(); // 1 = error, 0 = OK
 }
+int st25dv_write_sequence(uint8_t slave, uint16_t mem_addr, uint8_t * data, unsigned int length) { // helper function to write
+    unsigned int i;
+    if (data == 0 || length == 0) {
+        return 0; // error if nothing
+    }
+    UCB0I2CSA = slave; // setting st25dv as slave
+    UCB0CTLW0 |= UCTR | UCTXSTT; // enabling control bits to transmit
+    wait_tx_ready(); // wait for tx
+
+    if (check_nack()) return 0; // if a NACK, then error
+
+        if (i2c_send_and_check((mem_addr >> 8) & 0xFF)) return 0; // send two address bytes
+        if (i2c_send_and_check(mem_addr & 0xFF)) return 0;        //
+
+        for (i = 0; i < length; i++) { // send all data bytes during same I2C transaction
+            if (i2c_send_and_check(data[i])) return 0;
+        }
+
+        UCB0CTLW0 |= UCTXSTP; // stop transmitting
+        while (UCB0CTLW0 & UCTXSTP);
+
+        return 1; // success
+}
+int st25dv_present_i2c_password(void) // helper function to present default I2C PW to ST25
+{
+    uint8_t seq[17];
+    unsigned int i;
+
+    // Factory default I2C password is 0000000000000000h.
+    // Present password sequence:
+    // 8 password bytes, validation code 0x09, same 8 password bytes again.
+    for (i = 0; i < 8; i++) {
+        seq[i] = 0x00; // writing 0000...h
+    }
+
+    seq[8] = ST25DV_PRESENT_PWD_CODE; // 0x09 validation code
+
+    for (i = 0; i < 8; i++) {
+        seq[9 + i] = 0x00; // repeating PW bytes again
+    }
+
+    return st25dv_write_sequence(ST25DV_ADDR_SYSTEM, // write this
+                                 ST25DV_I2C_PWD_ADDR,
+                                 seq,
+                                 sizeof(seq));
+}
+
+int st25dv_i2c_session_is_open(void) // helper function to ensure password worked
+{
+    uint8_t sso;
+
+    sso = st25dv_read(ST25DV_ADDR_USER, ST25DV_REG_I2C_SSO_DYN); // read to ensure I2C security session open
+
+    if (sso & ST25DV_I2C_SSO_OPEN) {
+        return 1;
+    }
+
+    return 0;
+}
+
 
 int st25dv_write(uint8_t slave, uint16_t mem_addr, uint8_t data) { // function to send a test byte. mem_addr is 16bit address, uint8_t slave is the 8 bit slave address, and uint8_t data is the test byte of data. Returns 1 if success, 0 if not.
 // SETUP
@@ -595,18 +687,61 @@ uint8_t st25dv_read(uint8_t slave, uint16_t mem_addr) { // MCU gets address and 
         return data;
     }
 
-void enable_mailbox (void) {
-    uint8_t val = st25dv_read(ST25DV_ADDR_SYSTEM, ST25DV_REG_MB_MODE); //  reading static mailbox mode register
-    val |= ST25DV_MB_MODE_ENABLE; // set MB_MODE bit to allow Fast Transfer Mode/mailbox use
-    st25dv_write(ST25DV_ADDR_SYSTEM, ST25DV_REG_MB_MODE, val); // sets MB_MODE/static mailbox mode before mailbox use
+int enable_mailbox (void) { // helper function to enable FTM mailbox
+     uint8_t mb_mode;
+
+     if (!st25dv_present_i2c_password()) { // sending default, all zero password
+             return 0;
+         }
+     if (!st25dv_i2c_session_is_open()) { // confirm I2C security session opened
+             return 0;
+         }
+     if (!st25dv_write(ST25DV_ADDR_USER, ST25DV_REG_MB_CTRL_DYN, 0x00)) { // Disable dynamic FTM before changing static system config. This is harmless if FTM is already disabled.
+         return 0;
+     }
+     mb_mode = st25dv_read(ST25DV_ADDR_SYSTEM, ST25DV_REG_MB_MODE); // Read static MB_MODE register
+     if ((mb_mode & ST25DV_MB_MODE_ENABLE) == 0) { // if FTM auth not enabled, enable it.
+             mb_mode |= ST25DV_MB_MODE_ENABLE; // set MB_MODE bit to allow Fast Transfer Mode/mailbox use
+             if (!st25dv_write(ST25DV_ADDR_SYSTEM, ST25DV_REG_MB_MODE, mb_mode)) { // writing FTM enable
+                         return 0;
+                     }
+             __delay_cycles(10000);
+                }
+                if (!st25dv_write(ST25DV_ADDR_USER,                 // Enable FTM dynamically for runtime mailbox use.
+                                  ST25DV_REG_MB_CTRL_DYN,
+                                  ST25DV_MB_CTRL_MB_EN)) {
+                    return 0;
+                }
+                    return 1;
 }
 
-void mailbox_write(uint8_t *message, int length) { // write message bytes into ST25DV mailbox buffer
-    int i;
-    for (i = 0; i < length; i++) { // loop to write serially to mailbox (one byte at a time)
-        st25dv_write(ST25DV_ADDR_USER, ST25DV_MAILBOX_BASE + i, message[i]); // must start writing at x2008 (start of mailbox buffer)
+int st25dv_mailbox_is_free(void) {
+    uint8_t ctrl;
+    ctrl = st25dv_read(ST25DV_ADDR_USER, ST25DV_REG_MB_CTRL_DYN); // read MB_CTRL_DYN to see if MB free
+    if ((ctrl & ST25DV_MB_CTRL_MB_EN) == 0) { // MB must be enabled
+        return 0;
     }
+    if (ctrl & ST25DV_MB_CTRL_HOST_PUT_MSG) { // if host put something in mailbox
+        return 0;
+    }
+    if (ctrl & ST25DV_MB_CTRL_RF_PUT_MSG) { // if slave put something in mailbox
+        return 0;
+    }
+    return 1; // mailbox is free
 }
+
+int mailbox_write(uint8_t *message, unsigned int length) { // write message bytes into ST25DV mailbox buffer
+    if (message == 0) { // null pointer check, not checking message contents
+        return 0;
+    }
+    if (length == 0 || length > ST25DV_MAILBOX_MAX_LEN) { // if overflow or empty
+        return 0;
+    }
+    if (!st25dv_mailbox_is_free()) { // check to see if mailbox free
+        return 0;
+    }
+    return st25dv_write_sequence(ST25DV_ADDR_USER, ST25DV_MAILBOX_BASE, message, length); // write to mailbox if free. Sending whole message as one sequential write.
+    }
 
 // SPI/MAX30002
 void spi_pins_init(void) {
