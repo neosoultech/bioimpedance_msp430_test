@@ -48,7 +48,7 @@ All processing happens in the main loop.
 
 ## MAX30002 Operation
 
-The MAX30002 generates BioZ samples and stores them in a FIFO.
+The MAX30002 generates BioZ samples and stores them in a FIFO. Additionally, note that the analog high-pass filter is currently bypassed for better low-frequency BioZ accuracy.
 
 Basic sequence:
 
@@ -66,8 +66,9 @@ Basic sequence:
 
 Each FIFO read returns a 24-bit word.
 
-- Bits [23:18] are tag and status  
-- Bits [17:0] are BioZ data  
+- Bits [23:4] is the 20-bit signed BioZ sample
+- Bit [3] is zero/padding 
+- Bits [2:0] are the BTAG/status tag  
 
 The data is an 18-bit signed value.
 
