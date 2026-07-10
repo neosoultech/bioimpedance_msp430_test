@@ -144,6 +144,7 @@ __interrupt void Port_2_ISR(void)
 #define MAX_BIOZ_LOW_NOISE       (1UL << 18)
 #define MAX_BIOZ_GAIN_10         (0UL << 16)
 #define MAX_BIOZ_DHPF_0P05HZ     (1UL << 14)
+#define MAX_BIOZ_DHPF_BYPASS     (0UL << 14)
 #define MAX_BIOZ_DLPF_4HZ        (1UL << 12)
 #define MAX_BIOZ_FCGEN_8192HZ    (4UL << 8)
 #define MAX_BIOZ_CGMON_OFF       (0UL << 7)
@@ -155,7 +156,7 @@ __interrupt void Port_2_ISR(void)
     MAX_BIOZ_USE_INTERNAL_BIASGEN   | /* Use MAX30002 internal bias generator instead of external resistor */ \
     MAX_BIOZ_LOW_NOISE              | /* Low noise mode (cleaner data, but more power) */ \
     MAX_BIOZ_GAIN_10                | /* 10 V/V gain; testing lowest 1st */ \
-    MAX_BIOZ_DHPF_0P05HZ            | /* Digital HPF to preserve slower trends */ \
+    MAX_BIOZ_DHPF_BYPASS            |    | /* Digital HPF disabled (was destroying steady signal) */ \
     MAX_BIOZ_DLPF_4HZ               | /* Digital LPF to reduce noise and output bandwidth */ \
     MAX_BIOZ_FCGEN_8192HZ           | /* 8.192KHz generated current frequency, closest to 10KHz (wanted previously) */ \
     MAX_BIOZ_CGMON_OFF              | /* Current generator compliance monitor OFF. Diagnostic for later */ \
