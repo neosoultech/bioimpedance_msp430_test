@@ -73,8 +73,8 @@ Current BioZ Configuration:
 - digital LPF: 4 Hz
 - internal 100 MOhm resistive bias enabled on BIP/BIN
 - BIP/BIN connected by clearing OPENP and OPENN in CNFG_BMUX
+Note: Digital HPF is disabled because eval-kit testing showed that the HPF caused steady/static impedance values to decay toward a false low baseline. For static skin or lesion impedance measurements, the steady impedance value needs to be preserved.
 
-Digital HPF is disabled because eval-kit testing showed that the HPF caused steady/static impedance values to decay toward a false low baseline. For static skin or lesion impedance measurements, the steady impedance value needs to be preserved.
 ---
 FIFO Format
 
