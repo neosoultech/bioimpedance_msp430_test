@@ -49,6 +49,7 @@
 //  P1.7: CS (Chip select to initiate comms)
 //  P2.1: INTB (FIFO/data-ready interrupt. Sets max_flag)
 //  P2.2: FCLK (clock output ~32KHz ACLK to MAX30002)
+//  P2.7: MUX_SEL (selects between TARGET and REFERENCE)
 
                             // LED Notes:
 // LED pulses once if transmission occurs successfully.
@@ -163,7 +164,8 @@ __interrupt void Port_2_ISR(void)
     MAX_BIOZ_CGMAG_TEST             | /* 32uA injected current magnitude. Using middle low value. */ \
     MAX_BIOZ_PHOFF_0)                 /* No phase offset */
 
-    // MAX30002 MUX SELECT (MCU CHOOSES)
+    // MAX30002 MUX SELECT (MCU CHOOSES). MAX is still a single BioZ channel. The ADG884 muxes select whether MAX30002 BioZ path connects to target or reference electrode set.
+    // Sequential, not simultaneous
     // P2.7 controls ADG884 IN1/IN2 pins.
     // MUX_SEL = 1 selects TARGET electrodes, while MUX_SEL = 0 selects BASELINE electrodes
 #define BIOZ_MUX_SEL_BIT    BIT7
