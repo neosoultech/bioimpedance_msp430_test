@@ -58,7 +58,23 @@ Basic sequence:
 4. INTB asserts when data is available  
 5. MCU reads STATUS  
 6. FIFO is drained  
-7. Data is parsed into signed values  
+7. Data is parsed into signed values
+8. (Future Rev 2 behavior will use an external BioZ mux to measure the target electrode set and baseline/reference electrode set sequentially.)
+---
+Current BioZ Configuration: 
+
+- sample rate: 32 sps
+- BioZ drive frequency: 8.192 kHz
+- drive current: 32 uA
+- gain: 10 V/V
+- low-noise mode enabled
+- analog HPF bypassed
+- digital HPF bypassed/disabled
+- digital LPF: 4 Hz
+- internal 100 MOhm resistive bias enabled on BIP/BIN
+- BIP/BIN connected by clearing OPENP and OPENN in CNFG_BMUX
+
+Digital HPF is disabled because eval-kit testing showed that the HPF caused steady/static impedance values to decay toward a false low baseline. For static skin or lesion impedance measurements, the steady impedance value needs to be preserved.
 
 ---
 
@@ -66,16 +82,17 @@ Basic sequence:
 
 Each FIFO read returns a 24-bit word.
 
-- Bits [23:4] is the 20-bit signed BioZ sample
+- Bits [23:4] are the 20-bit signed BioZ sample
 - Bit [3] is zero/padding 
 - Bits [2:0] are the BTAG/status tag  
 
-The data is an 18-bit signed value.
+The data is an 20-bit signed value.
 
 Processing:
 
-- mask lower 18 bits  
-- check sign bit  
+- shift right by 4 to extract bits [23:4]
+- mask the lower 20 bits
+- check bit 19 as sign bit
 - sign extend to 32 bits  
 
 ---
@@ -104,8 +121,9 @@ Read operation:
 - send address  
 - read one byte  
 
-Mailbox is a byte buffer.  
-Data is written sequentially one byte at a time.
+Mailbox is a byte buffer.
+Mailbox data is written as one sequential I2C write starting at address 0x2008.
+
 
 ---
 
