@@ -130,7 +130,8 @@ Mailbox data is written as one sequential I2C write starting at address 0x2008.
 The MSP430:
 
 - controls MAX30002 over SPI  
-- controls ST25DV over I2C  
+- controls ST25DV over I2C
+- controls ADG884 target/baseline BioZ mux using P2.7
 - handles interrupts from both  
 - runs at 1 MHz system clock  
 
