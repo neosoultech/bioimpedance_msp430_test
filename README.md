@@ -75,10 +75,8 @@ Current BioZ Configuration:
 - BIP/BIN connected by clearing OPENP and OPENN in CNFG_BMUX
 
 Digital HPF is disabled because eval-kit testing showed that the HPF caused steady/static impedance values to decay toward a false low baseline. For static skin or lesion impedance measurements, the steady impedance value needs to be preserved.
-
 ---
-
-### FIFO Format
+FIFO Format
 
 Each FIFO read returns a 24-bit word.
 
