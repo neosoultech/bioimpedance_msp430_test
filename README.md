@@ -59,7 +59,11 @@ Basic sequence:
 5. MCU reads STATUS  
 6. FIFO is drained  
 7. Data is parsed into signed values
-8. (Future Rev 2 behavior will use an external BioZ mux to measure the target electrode set and baseline/reference electrode set sequentially.)
+
+For target/baseline testing, this sequence is run sequentially for two measurement areas:
+- TEST_MAX_2SPOT uses the ADG884 mux to switch between target and baseline/reference electrodes
+- TEST_MAX_2SPOT_MANUAL uses the eval-kit workflow where the user moves the electrodes manually and presses S1 before each measurement
+
 ---
 ## Current BioZ Configuration: 
 
@@ -84,7 +88,7 @@ Each FIFO read returns a 24-bit word.
 - Bit [3] is zero/padding 
 - Bits [2:0] are the BTAG/status tag  
 
-The data is an 20-bit signed value.
+The data is a 20-bit signed value.
 
 Processing:
 
@@ -120,7 +124,8 @@ Read operation:
 - read one byte  
 
 Mailbox is a byte buffer.
-Mailbox data is written as one sequential I2C write starting at address 0x2008.
+Mailbox data is written as one sequential I2C write starting at address 0x2008, not as normal EEPROM/NDEF memory.
+
 
 
 ---
@@ -131,7 +136,7 @@ The MSP430:
 
 - controls MAX30002 over SPI  
 - controls ST25DV over I2C
-- controls ADG884 target/baseline BioZ mux using P2.7
+- controls ADG884 target/baseline BioZ mux using P2.7 on the custom patch PCB
 - handles interrupts from both  
 - runs at 1 MHz system clock  
 
@@ -166,8 +171,13 @@ Only one test should be enabled at a time.
 
 5. TEST_MAX_READ  
    reads live FIFO data  
-   verifies interrupts, STATUS, and parsing  
+   verifies interrupts, STATUS, and parsing
 
+6. TEST_MAX_2SPOT
+   uses the ADG884 mux to automatically measure target and baseline/reference electrode sets
+
+7. TEST_MAX_2SPOT_MANUAL
+   eval-kit/manual workflow; user places electrodes on one skin area, presses S1, moves electrodes to a second area, then presses S1 again
 ---
 
 ### ST25DV Tests
