@@ -9,7 +9,7 @@
 // ACLK (clock speed) at ~32KHz REFO
 // - Data flow: BioZ measurement --> sample placed into FIFO --> FIFO reaches threshold --> INTB goes low on P2.1 falling edge
 // --> PORT2 ISR --> max_flag = 1 --> main loop detects max_flag --> MCU reads STATUS --> MCU drains FIFO --> MCU parses bioZ data
-// Note: FCLK must be present or no data generated, FIFO must be drainer to prevent overflow, data interrupt-driven
+// Note: FCLK must be present or no data generated, FIFO must be drained to prevent overflow, data interrupt-driven
 //
 // MAX30002 FIFO FORMAT:
 // 24 bit word: bits [23:4] are 20-bit signed BioZ sample (2SC), bit [3]: zero padding, bits [2:0]: BTAG status tag
@@ -49,7 +49,9 @@
 //  P1.7: CS (Chip select to initiate comms)
 //  P2.1: INTB (FIFO/data-ready interrupt. Sets max_flag)
 //  P2.2: FCLK (clock output ~32KHz ACLK to MAX30002)
-//  P2.7: MUX_SEL (selects between TARGET and REFERENCE)
+//  P2.7: MUX_SEL on custom patch PCB only. Controls ADG884 target/reference mux.
+//        Not used in TEST_MAX_2SPOT_MANUAL eval-board workflow.
+
 
                             // LED Notes:
 // LED pulses once if transmission occurs successfully.
@@ -66,6 +68,9 @@
 // external interrupts from P2.1 (MAX30002 INTB): Indicates data ready / FIFO event, sets max_flag
 volatile int32_t debug_bioz = 0; // debugging
 volatile uint32_t sample_count = 0; // debugging
+volatile int32_t debug_target_bioz = 0;
+volatile int32_t debug_baseline_bioz = 0;
+volatile int32_t debug_bioz_diff = 0;
 
 volatile int phone_flag = 0;
 volatile int max_flag = 0;
@@ -217,27 +222,36 @@ __interrupt void Port_2_ISR(void)
                                         //
 
                       //TEST MODE MACROS. ONLY 1 AT A TIME CAN BE ENABLED. //
-#define TEST_MODE            1
+#define TEST_MODE             1
 // if test mode enabled...
-#define TEST_ST25_WRITE      1
-#define TEST_ST25_READ       0
-#define TEST_ST25_GPO        0
-#define TEST_ST25_MAILBOX    0
+#define TEST_ST25_WRITE       1
+#define TEST_ST25_READ        0
+#define TEST_ST25_GPO         0
+#define TEST_ST25_MAILBOX     0
 
-#define TEST_MAX_SPI         0
-#define TEST_MAX_ID          0
-#define TEST_MAX_CONFIG      0
-#define TEST_MAX_START       0
-#define TEST_MAX_READ        0
+#define TEST_MAX_SPI          0
+#define TEST_MAX_ID           0
+#define TEST_MAX_CONFIG       0
+#define TEST_MAX_START        0
+#define TEST_MAX_READ         0
+#define TEST_MAX_2SPOT        0
+#define TEST_MAX_2SPOT_MANUAL 0
+
+
+#define USE_BIOZ_MUX        (TEST_MAX_2SPOT || TEST_MAX_START || TEST_MAX_READ)
+#define USE_EXP430_S1       TEST_MAX_2SPOT_MANUAL
+
+
 
                                         //
 
                         // OTHER MACROS (DON'T CHANGE)
-#define LED_ON()    (P1OUT |= BIT0) // LED on indicates error.
-#define LED_OFF()   (P1OUT &= ~BIT0) // LED off indicates IDLE/SLEEP
-#define LED_TOGGLE() (P1OUT ^= BIT0) // macro to toggle LED on and off. --> Indicates that sensing/transmission occuring
-#define MAX_CS_LOW() (P1OUT &= ~BIT7) //select MAX30002, CS active low
-#define MAX_CS_HIGH()(P1OUT |= BIT7) // deselect MAX30002
+#define LED_ON()      (P1OUT |= BIT0) // LED on indicates error.
+#define LED_OFF()     (P1OUT &= ~BIT0) // LED off indicates IDLE/SLEEP
+#define LED_TOGGLE()  (P1OUT ^= BIT0) // macro to toggle LED on and off. --> Indicates that sensing/transmission occuring
+#define MAX_CS_LOW()  (P1OUT &= ~BIT7) //select MAX30002, CS active low
+#define MAX_CS_HIGH() (P1OUT |= BIT7) // deselect MAX30002
+#define BUTTON_S1_BIT BIT3            // S1 button on EXP430 is BIT3
                                         //
 
                         // FUNCTION DECLARATIONS
@@ -275,6 +289,11 @@ void max30002_synch(void);
 void fclk_init(void);
 int32_t bioz_parse(uint32_t raw);
 void bioz_mux_init(void);
+void max30002_configure_bioz_once(void);
+void bioz_prepare_selected_path(void);
+int32_t max30002_collect_bioz_average(uint16_t sample_goal);
+void button_s1_init(void);
+void wait_for_s1_press(void);
                                         //
 
 int main(void)
@@ -290,8 +309,13 @@ int main(void)
 	i2c_init();
 	spi_pins_init();
 	spi_init();
-	bioz_mux_init();
+	#if USE_BIOZ_MUX
+	    bioz_mux_init();
+	#endif
 	fclk_init();
+	#if USE_EXP430_S1
+	    button_s1_init();
+	#endif
 	gpo_init();
 	max_int_init();
 #if TEST_ST25_MAILBOX
@@ -388,7 +412,8 @@ int main(void)
 	    __delay_cycles(10000); // 10ms delay
 
 	    info = max30002_read_info(); // read info register just as a test for SPI communication
-	    if ((info & 0xF03000) == 0x502000) { // D[23:20] should be 0101 (5), D[13:12] should be 10 (fixed INFO/part-ID related bits)
+	    if ((info & 0xF03000) == 0x501000) { // MAX30001 INFO fixed bits: D[23:20] = 0101 and D[13:12] = 01. Mask 0xF03000 should equal 0x501000. INFO is not valid as the first command after SW_RST.
+
 	        led_pulse_transmission(); // pulse LED if what read looks valid
 	    }
 	    else {
@@ -532,6 +557,57 @@ int main(void)
 	                        }
 	                      }
 	                    }
+
+    #elif TEST_MAX_2SPOT
+	// Custom patch test: ADG884 mux automatically switches between target and baseline/reference electrodes.
+	int32_t target_avg;
+	int32_t baseline_avg;
+	int32_t diff;
+
+	max30002_configure_bioz_once(); // configure BioZ
+
+	BIOZ_SELECT_TARGET();           // target selected
+	bioz_prepare_selected_path();   // prepare for BioZ measurement
+	target_avg = max30002_collect_bioz_average(16); // average for target electrodes measured
+
+	BIOZ_SELECT_BASELINE();         // baseline selected
+	bioz_prepare_selected_path();   // prepare for BioZ measurement
+	baseline_avg = max30002_collect_bioz_average(16); // average for baseline electrodes measured
+
+	diff = target_avg - baseline_avg;   // difference between target and baseline
+	debug_target_bioz = target_avg;     // debug for CCS window
+	debug_baseline_bioz = baseline_avg; // debug for CCS window
+	debug_bioz_diff = diff;             // debug for CCS window
+
+	led_pulse_transmission(); // indicates one full target & baseline cycle completed
+	__delay_cycles(1000000);
+
+    #elif TEST_MAX_2SPOT_MANUAL
+	// Eval-kit/manual test: user places electrodes on target, presses S1,
+	// then moves electrodes to baseline/reference area and presses S1 again.
+	// Does not use ADG884 mux.
+	int32_t target_avg;
+	int32_t baseline_avg;
+	int32_t diff;
+
+	max30002_configure_bioz_once(); // configure BioZ startup
+// STEP 1: Place electrodes on target. Press S1 when ready.
+	wait_for_s1_press();
+	bioz_prepare_selected_path();
+	target_avg = max30002_collect_bioz_average(16);  // average of 16 measurements
+	debug_target_bioz = target_avg; // debug
+	led_pulse_transmission(); // pulse for success in target measurement
+// STEP 2: Move same electrodes to the baseline area. Press S1 when ready.
+	wait_for_s1_press();
+	bioz_prepare_selected_path();
+	baseline_avg = max30002_collect_bioz_average(16);
+	debug_baseline_bioz = baseline_avg; // average of 16 measurements
+
+	diff = target_avg - baseline_avg; // difference b/w target and baseline
+	debug_bioz_diff = diff; // debug
+
+	led_pulse_transmission(); // pulse for success in baseline measurement
+	__delay_cycles(1000000);
 
     #endif // ends test chain
     #endif // end program
@@ -873,6 +949,85 @@ int32_t bioz_parse(uint32_t raw) { // helper function to parse bioZ data. Bits [
     return (int32_t) data; // returning the parsed data bits
 }
 
+void max30002_configure_bioz_once(void) { // configures the MAX30002 for bioimpedance sensing. Only needs to occur once
+    uint32_t bmux;
+
+    max30002_reset(); // reset to known state
+    (void)max30002_read_status(); // dummy transaction. Can't do INFO as first command after reset.
+    __delay_cycles(10000); // 10 ms delay
+
+    max30002_write_reg(MAX_REG_EN_INT, MAX_CFG_EN_INT_START); // Configure INTB: allow BioZ FIFO interrupt & overflow to drive INTB, use open drain INTB output
+    max30002_write_reg(MAX_REG_MNGR_INT, MAX_CFG_MNGR_INT_START); // Configure interrupt manager so interrupt if >=1 BioZ sample in FIFO, and interrupt flag clears auto.
+    max30002_write_reg(MAX_REG_CNFG_BIOZ, MAX_CFG_CNFG_BIOZ_START); // Configure BioZ channel: 32sps, 8.192Khz, low noise, 10V/V gain, midrange current magnitude
+
+    bmux = max30002_read_reg(MAX_REG_CNFG_BMUX); // read BMUX config
+    bmux &= ~(MAX_BMUX_OPENP_BIT | MAX_BMUX_OPENN_BIT); // clear OPENP AND OPENN so BIP and BIN connected to BioZ channel
+    max30002_write_reg(MAX_REG_CNFG_BMUX, bmux); // Connected BIP & BIN to BioZ channel
+
+    max30002_write_reg(MAX_REG_CNFG_GEN, MAX_CFG_CNFG_GEN_START); // Enable BioZ & internal lead biasing. Requires EN_BIOZ to be asserted same time (done)
+    __delay_cycles(100000); // 0.1s startup
+}
+
+void bioz_prepare_selected_path(void) { // helper function to get ready for BioZ sample
+    max_flag = 0; // clear stale interrupt flag
+    __delay_cycles(50000); // Allow selected electrode path/contact to settle.
+    max30002_fifo_reset(); // clear old samples
+    max30002_synch(); // restart bioZ sample timing & alignment
+    __delay_cycles(100000); // 0.1 second delay
+}
+
+int32_t max30002_collect_bioz_average(uint16_t sample_goal) { // Helper function that collects an average of n different bioimpedance measurements
+    uint32_t status;
+    uint32_t raw;
+    uint8_t tag;
+    int32_t bioz;
+    int64_t sum = 0;
+    uint16_t count = 0;
+
+    while (count < sample_goal) {
+        if (!max_flag) { // wait for max INTB flag
+            continue;
+        }
+        max_flag = 0; // reset flag after it is enabled
+        status = max30002_read_status();
+
+        if (status & MAX_STATUS_BOVF) { // if FIFO overflow happened, clear FIFO and keep trying
+            max30002_fifo_reset();
+            continue;
+        }
+        while ((status & MAX_STATUS_BINT) && (count < sample_goal)) {
+            raw = max30002_read_fifo(); // getting raw data from MAX
+            tag = raw & 0x07; // get FIFO overflow tag
+        if (tag == 0x07) { // FIFO overflow tag
+            max30002_fifo_reset();
+            break;
+        }
+        if (tag == 0x06) { // if FIFO empty, try again
+            break;
+        }
+        if (tag == 0x00 || tag == 0x02) { // valid sample or valid EOF
+            bioz = bioz_parse(raw); // parse data
+            sum += bioz; // sum added
+            count++; // counter incremented
+            sample_count++; // for debug
+            debug_bioz = bioz; // debug bioz
+        }
+        if (tag == 0x01 || tag == 0x03) { // over/under range
+            bioz = bioz_parse(raw);
+            debug_bioz = bioz;
+        }
+        if (tag == 0x02 || tag == 0x03) { // EOF tags
+            break;
+        }
+        status = max30002_read_status();
+    }
+}
+if (count == 0) { // error if no count
+    return 0;
+}
+return (int32_t)(sum / count); // return the average
+}
+
 // LED STATUS INDICATORS
 void led_blink_measuring (void) { // blinking LED = measurement
     LED_TOGGLE();
@@ -890,4 +1045,24 @@ void error_handler (void) { // ensures LED is solid during error
     LED_ON();
 
     while(1); // LED stays permanently on with error
+}
+
+// EXP430 buttons
+void button_s1_init(void) { // helper function to initialize buttons on EXP430FR2433 dev kit
+    // S1 = P2.3
+    // active-low buttons w/ internal pullups
+
+    P2SEL0 &= ~(BUTTON_S1_BIT); // GPIO mode
+    P2SEL1 &= ~(BUTTON_S1_BIT); // GPIO mode
+    P2DIR &= ~(BUTTON_S1_BIT); // // S1 as input
+    P2REN |= (BUTTON_S1_BIT); // turn on resistors
+    P2OUT |= (BUTTON_S1_BIT); // turn on pullups
+    P2IE &= ~(BUTTON_S1_BIT); // turn off hardware interrupts
+    P2IFG &= ~(BUTTON_S1_BIT); // clear any interrupt flags
+}
+void wait_for_s1_press(void) { // blocks execution until button S1 fully pressed & released
+    while (P2IN & BUTTON_S1_BIT); // BUTTON_S1_BIT is 0 if pressed
+    __delay_cycles(50000); // 50ms debounce
+    while (!(P2IN & BUTTON_S1_BIT));
+    __delay_cycles(50000);
 }
