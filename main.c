@@ -156,13 +156,19 @@ __interrupt void Port_2_ISR(void)
     MAX_BIOZ_USE_INTERNAL_BIASGEN   | /* Use MAX30002 internal bias generator instead of external resistor */ \
     MAX_BIOZ_LOW_NOISE              | /* Low noise mode (cleaner data, but more power) */ \
     MAX_BIOZ_GAIN_10                | /* 10 V/V gain; testing lowest 1st */ \
-    MAX_BIOZ_DHPF_BYPASS            |    | /* Digital HPF disabled (was destroying steady signal) */ \
+    MAX_BIOZ_DHPF_BYPASS            | /* Digital HPF disabled (was destroying steady signal) */ \
     MAX_BIOZ_DLPF_4HZ               | /* Digital LPF to reduce noise and output bandwidth */ \
     MAX_BIOZ_FCGEN_8192HZ           | /* 8.192KHz generated current frequency, closest to 10KHz (wanted previously) */ \
     MAX_BIOZ_CGMON_OFF              | /* Current generator compliance monitor OFF. Diagnostic for later */ \
     MAX_BIOZ_CGMAG_TEST             | /* 32uA injected current magnitude. Using middle low value. */ \
     MAX_BIOZ_PHOFF_0)                 /* No phase offset */
 
+    // MAX30002 MUX SELECT (MCU CHOOSES)
+    // P2.7 controls ADG884 IN1/IN2 pins.
+    // MUX_SEL = 1 selects TARGET electrodes, while MUX_SEL = 0 selects BASELINE electrodes
+#define BIOZ_MUX_SEL_BIT    BIT7
+#define BIOZ_SELECT_TARGET()    (P2OUT |= BIOZ_MUX_SEL_BIT)
+#define BIOZ_SELECT_BASELINE()  (P2OUT &= ~BIOZ_MUX_SEL_BIT)
                                     //
 
                              // ST25DV REGISTER MAP //
@@ -266,13 +272,13 @@ uint32_t max30002_read_fifo(void);
 void max30002_synch(void);
 void fclk_init(void);
 int32_t bioz_parse(uint32_t raw);
+void bioz_mux_init(void);
                                         //
 
 int main(void)
 {
 	WDTCTL = WDTPW | WDTHOLD;	// stop watchdog timer
 	 PM5CTL0 &= ~LOCKLPM5;       // Unlock GPIO ports to activate I/O pins
-
 	// LED
 	P1DIR |= BIT0; // setting pin 1.0 as LED output (1)
 	P1OUT &= ~BIT0; // setting pin 1.0 to a 0 as value
@@ -282,6 +288,7 @@ int main(void)
 	i2c_init();
 	spi_pins_init();
 	spi_init();
+	bioz_mux_init();
 	fclk_init();
 	gpo_init();
 	max_int_init();
@@ -415,6 +422,8 @@ int main(void)
 	    max30002_reset(); // reset to known state
 	    (void)max30002_read_status(); // dummy transaction. Can't do INFO as first command after reset.
 	    __delay_cycles(10000); // 10 ms delay
+	    BIOZ_SELECT_TARGET();
+	    __delay_cycles(50000); // let mux/electrode path settle
 
 	    max30002_write_reg(MAX_REG_EN_INT, MAX_CFG_EN_INT_START); // Configure INTB: allow BioZ FIFO interrupt & overflow to drive INTB, use open drain INTB output
 	    max30002_write_reg(MAX_REG_MNGR_INT, MAX_CFG_MNGR_INT_START); // Configure interrupt manager so interrupt if >=1 BioZ sample in FIFO, and interrupt flag clears auto.
@@ -464,6 +473,8 @@ int main(void)
 	    max30002_reset(); // reset before use, read status as first command
 	    (void)max30002_read_status();
 	    __delay_cycles(10000);
+	    BIOZ_SELECT_TARGET();
+	    __delay_cycles(50000); // let mux/electrode path settle
 
 	    max30002_write_reg(MAX_REG_EN_INT, MAX_CFG_EN_INT_START); // setup for MAX
 	    max30002_write_reg(MAX_REG_MNGR_INT, MAX_CFG_MNGR_INT_START);
@@ -793,6 +804,16 @@ uint8_t spi_transfer(uint8_t data) { // helper function to transfer over SPI (bo
     UCA0TXBUF = data; // put data into TX buffer
     while (!(UCA0IFG & UCRXIFG)); // while no RX interrupts
     return UCA0RXBUF; // get information coming into RX buffer
+}
+
+void bioz_mux_init(void) { // helper function to choose between ADG884 pins. P2.7 is BIOZ_MUX_SEL output
+    P2SEL0 &= ~BIOZ_MUX_SEL_BIT; // GPIO MODE
+    P2SEL1 &= ~BIOZ_MUX_SEL_BIT; // GPIO MODE
+    BIOZ_SELECT_TARGET(); // default to target electrodes
+    P2DIR |= BIOZ_MUX_SEL_BIT; // make P2.7 output
+    P2REN &= ~BIOZ_MUX_SEL_BIT; // disable internal pull resistor
+    P2IE &= ~BIOZ_MUX_SEL_BIT; // no interrupt on mux sel pin
+    P2IFG &= ~BIOZ_MUX_SEL_BIT; // clear any stale flags
 }
 
 uint32_t max30002_read_reg(uint8_t reg) { // helper function to read data from a register from max30002
