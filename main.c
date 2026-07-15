@@ -237,6 +237,8 @@ __interrupt void Port_2_ISR(void)
 #define TEST_MAX_READ         0
 #define TEST_MAX_2SPOT        0
 #define TEST_MAX_2SPOT_MANUAL 0
+#define TEST_DEMO_PHONE_TRIGGER_BIOZ 0
+#define DEMO_FAKE_BIOZ_VALUE         1
 
 
 #define USE_BIOZ_MUX        (TEST_MAX_2SPOT || TEST_MAX_START || TEST_MAX_READ)
