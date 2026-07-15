@@ -225,12 +225,12 @@ __interrupt void Port_2_ISR(void)
                       //TEST MODE MACROS. ONLY 1 AT A TIME CAN BE ENABLED. //
 #define TEST_MODE             1
 // if test mode enabled...
-#define TEST_ST25_WRITE       1
+#define TEST_ST25_WRITE       0
 #define TEST_ST25_READ        0
 #define TEST_ST25_GPO         0
 #define TEST_ST25_MAILBOX     0
 
-#define TEST_MAX_SPI          0
+#define TEST_MAX_SPI          1
 #define TEST_MAX_ID           0
 #define TEST_MAX_CONFIG       0
 #define TEST_MAX_START        0
@@ -238,7 +238,7 @@ __interrupt void Port_2_ISR(void)
 #define TEST_MAX_2SPOT        0
 #define TEST_MAX_2SPOT_MANUAL 0
 #define TEST_DEMO_PHONE_TRIGGER_BIOZ 0
-#define DEMO_FAKE_BIOZ_VALUE         1
+#define DEMO_FAKE_BIOZ_VALUE         0
 
 
 #define USE_BIOZ_MUX        (TEST_MAX_2SPOT || TEST_MAX_START || TEST_MAX_READ)
@@ -977,7 +977,9 @@ void bioz_prepare_selected_path(void) { // helper function to get ready for BioZ
     __delay_cycles(50000); // Allow selected electrode path/contact to settle.
     max30002_fifo_reset(); // clear old samples
     max30002_synch(); // restart bioZ sample timing & alignment
-    __delay_cycles(100000); // 0.1 second delay
+    // Let BioZ samples settle after restart.
+    __delay_cycles(1000000);        // 1.0 s
+
 }
 
 int32_t max30002_collect_bioz_average(uint16_t sample_goal) { // Helper function that collects an average of n different bioimpedance measurements
