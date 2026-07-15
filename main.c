@@ -10,7 +10,8 @@
 // - Data flow: BioZ measurement --> sample placed into FIFO --> FIFO reaches threshold --> INTB goes low on P2.1 falling edge
 // --> PORT2 ISR --> max_flag = 1 --> main loop detects max_flag --> MCU reads STATUS --> MCU drains FIFO --> MCU parses bioZ data
 // Note: FCLK must be present or no data generated, FIFO must be drained to prevent overflow, data interrupt-driven
-//
+// For eval board (MAX30001EVSYS), a 32kHz crystal oscillator is already provided, so FCLK on MSP is disabled.
+
 // MAX30002 FIFO FORMAT:
 // 24 bit word: bits [23:4] are 20-bit signed BioZ sample (2SC), bit [3]: zero padding, bits [2:0]: BTAG status tag
 // BTAG: 000 valid, 001 over/under range, 010 valid EOF, 011 over/under EOF
@@ -240,6 +241,7 @@ __interrupt void Port_2_ISR(void)
 
 #define USE_BIOZ_MUX        (TEST_MAX_2SPOT || TEST_MAX_START || TEST_MAX_READ)
 #define USE_EXP430_S1       TEST_MAX_2SPOT_MANUAL
+#define USE_MSP_FCLK          0
 
 
 
@@ -312,7 +314,9 @@ int main(void)
 	#if USE_BIOZ_MUX
 	    bioz_mux_init();
 	#endif
+    #if USE_MSP_FCLK
 	fclk_init();
+    #endif
 	#if USE_EXP430_S1
 	    button_s1_init();
 	#endif
