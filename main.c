@@ -19,7 +19,7 @@
 
                                 // ST25 Information
 // I2C interface
-// - Data flow: Phone tap --> ST26 asserts GPO on P2.0 falling edge --> PORT2 ISR --> phone_flag = 1 --> main loop detects phone_flag
+// - Data flow: Phone tap --> ST25 asserts GPO on P2.0 falling edge --> PORT2 ISR --> phone_flag = 1 --> main loop detects phone_flag
 // --> MCU reads/writes mailbox or EEPROM --> data transmitted to/from phone.
 // Note: GPO requires pull-up resistor, mailbox must be enabled before use
 //
@@ -568,12 +568,10 @@ int main(void)
 
 	BIOZ_SELECT_TARGET();           // target selected
 	bioz_prepare_selected_path();   // prepare for BioZ measurement
-	target_avg = max30002_collect_bioz_average(16); // average for target electrodes measured
-
+	target_avg = max30002_collect_bioz_average(16); // average of 16 parsed raw BioZ samples
 	BIOZ_SELECT_BASELINE();         // baseline selected
 	bioz_prepare_selected_path();   // prepare for BioZ measurement
-	baseline_avg = max30002_collect_bioz_average(16); // average for baseline electrodes measured
-
+	baseline_avg = max30002_collect_bioz_average(16);  // average of 16 parsed raw BioZ samples
 	diff = target_avg - baseline_avg;   // difference between target and baseline
 	debug_target_bioz = target_avg;     // debug for CCS window
 	debug_baseline_bioz = baseline_avg; // debug for CCS window
