@@ -62,14 +62,19 @@
 
 #include <msp430.h>
 #include <stdint.h>
+#include <stdio.h>
 #define USE_LPM              0 // 0 = Normal (debug), 1 = low power
-
+#define BIOZ_LOG_N 128
                                 // INTERRUPT HANDLER
 // external interrupts from P2.0 (ST25 GPO): Indicates phone interaction, sets phone_flag
 // external interrupts from P2.1 (MAX30002 INTB): Indicates data ready / FIFO event, sets max_flag
 volatile int32_t debug_bioz = 0; // debugging
 volatile uint32_t sample_count = 0; // debugging
 volatile int32_t debug_target_bioz = 0;
+volatile int32_t bioz_log_value[BIOZ_LOG_N] = {0};
+volatile uint16_t bioz_log_i = 0;
+volatile uint8_t bioz_log_done = 0;
+volatile int32_t debug_print_count = 0;
 volatile int32_t debug_baseline_bioz = 0;
 volatile int32_t debug_bioz_diff = 0;
 volatile uint32_t debug_info = 0;
@@ -187,6 +192,8 @@ __interrupt void Port_2_ISR(void)
 #define BIOZ_MUX_SEL_BIT    BIT7
 #define BIOZ_SELECT_TARGET()    (P2OUT |= BIOZ_MUX_SEL_BIT)
 #define BIOZ_SELECT_BASELINE()  (P2OUT &= ~BIOZ_MUX_SEL_BIT)
+#define BIOZ_DISCARD_SAMPLES 64
+
                                     //
 
                              // ST25DV REGISTER MAP //
@@ -245,9 +252,9 @@ __interrupt void Port_2_ISR(void)
 #define TEST_MAX_ID           0
 #define TEST_MAX_CONFIG       0
 #define TEST_MAX_START        0
-#define TEST_MAX_READ         1
+#define TEST_MAX_READ         0
 #define TEST_MAX_2SPOT        0
-#define TEST_MAX_2SPOT_MANUAL 0
+#define TEST_MAX_2SPOT_MANUAL 1
 #define TEST_DEMO_PHONE_TRIGGER_BIOZ 0
 #define DEMO_FAKE_BIOZ_VALUE         0
 
@@ -548,6 +555,11 @@ int main(void)
 	                max30002_synch();
 
 	                __delay_cycles(100000);
+
+
+	                printf("sample_count,status,raw,tag,bioz,bovf_count\n");
+	                debug_print_count = 0;
+
 // READ LOOP:
 	                while(1) {
 	                    if (max_flag) { // set by ISR on INTB
@@ -574,6 +586,14 @@ int main(void)
 	                                bioz = bioz_parse(raw);
 	                                debug_bioz = bioz;
 	                                sample_count++; // debug; count samples recieved
+	                                if (bioz_log_i < BIOZ_LOG_N) {
+	                                    bioz_log_value[bioz_log_i] = bioz;
+	                                    bioz_log_i++;
+
+	                                    if (bioz_log_i >= BIOZ_LOG_N) {
+	                                        bioz_log_done = 1;
+	                                    }
+	                                }
 	                                LED_TOGGLE(); // if successful read, blink if FIFO producing data
 	                            }
 	                            else if (tag == 0x01 || tag == 0x03){ // Over-under. Cases of questionably valid data
@@ -1006,57 +1026,79 @@ void bioz_prepare_selected_path(void) { // helper function to get ready for BioZ
 
 }
 
-int32_t max30002_collect_bioz_average(uint16_t sample_goal) { // Helper function that collects an average of n different bioimpedance measurements
+int32_t max30002_collect_bioz_average(uint16_t sample_goal) // Helper function that collects an average of n settled bioimpedance measurements
+{
     uint32_t status;
     uint32_t raw;
     uint8_t tag;
     int32_t bioz;
     int64_t sum = 0;
     uint16_t count = 0;
-
+    uint16_t discard_count = 0;
     while (count < sample_goal) {
-        if (!max_flag) { // wait for max INTB flag
+        if (!max_flag) {
             continue;
         }
-        max_flag = 0; // reset flag after it is enabled
+        max_flag = 0;
         status = max30002_read_status();
-
-        if (status & MAX_STATUS_BOVF) { // if FIFO overflow happened, clear FIFO and keep trying
+        if (status & MAX_STATUS_BOVF) {
             debug_bovf_count++;
             max30002_fifo_reset();
+            max30002_synch();
+            discard_count = 0;             // Start discard process over after overflow
+            count = 0;
+            sum = 0;
             continue;
         }
         while ((status & MAX_STATUS_BINT) && (count < sample_goal)) {
-            raw = max30002_read_fifo(); // getting raw data from MAX
-            tag = raw & 0x07; // get FIFO overflow tag
-        if (tag == 0x07) { // FIFO overflow tag
-            max30002_fifo_reset();
-            break;
+            raw = max30002_read_fifo();
+            tag = raw & 0x07;
+
+            if (tag == 0x07) {                 // FIFO overflow tag
+                debug_bovf_count++;
+                max30002_fifo_reset();
+                max30002_synch();
+                discard_count = 0;
+                count = 0;
+                sum = 0;
+                break;
+            }
+            if (tag == 0x06) {
+                // FIFO empty tag
+                break;
+            }
+            if (tag == 0x00 || tag == 0x02) { // Valid BioZ sample or valid BioZ EOF sample
+                bioz = bioz_parse(raw);
+                debug_bioz = bioz;
+                sample_count++;
+
+                if (discard_count < BIOZ_DISCARD_SAMPLES) {  // Throw away early settling samples
+                    discard_count++;
+                }
+                else {  // Only settled samples are averaged
+                    sum += bioz;
+                    count++;
+                }
+            }
+
+            if (tag == 0x01 || tag == 0x03) {    // Over-range or under-range sample
+                bioz = bioz_parse(raw);
+                debug_bioz = bioz;
+            }
+
+            if (tag == 0x02 || tag == 0x03) {                 // EOF tags
+                break;
+            }
+
+            status = max30002_read_status();
         }
-        if (tag == 0x06) { // if FIFO empty, try again
-            break;
-        }
-        if (tag == 0x00 || tag == 0x02) { // valid sample or valid EOF
-            bioz = bioz_parse(raw); // parse data
-            sum += bioz; // sum added
-            count++; // counter incremented
-            sample_count++; // for debug
-            debug_bioz = bioz; // debug bioz
-        }
-        if (tag == 0x01 || tag == 0x03) { // over/under range
-            bioz = bioz_parse(raw);
-            debug_bioz = bioz;
-        }
-        if (tag == 0x02 || tag == 0x03) { // EOF tags
-            break;
-        }
-        status = max30002_read_status();
     }
-}
-if (count == 0) { // error if no count
-    return 0;
-}
-return (int32_t)(sum / count); // return the average
+
+    if (count == 0) {
+        return 0;
+    }
+
+    return (int32_t)(sum / count);
 }
 
 // LED STATUS INDICATORS
