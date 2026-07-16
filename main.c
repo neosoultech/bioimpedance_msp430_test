@@ -72,6 +72,16 @@ volatile uint32_t sample_count = 0; // debugging
 volatile int32_t debug_target_bioz = 0;
 volatile int32_t debug_baseline_bioz = 0;
 volatile int32_t debug_bioz_diff = 0;
+volatile uint32_t debug_info = 0;
+volatile uint32_t debug_en_int_read = 0;
+volatile uint8_t debug_config_pass = 0;
+volatile uint32_t debug_en_int_start = 0;
+volatile uint32_t debug_mngr_int_start = 0;
+volatile uint32_t debug_gen_start = 0;
+volatile uint32_t debug_bmux_start = 0;
+volatile uint32_t debug_bioz_start = 0;
+volatile uint8_t debug_start_pass = 0;
+volatile uint32_t debug_bovf_count = 0;
 
 volatile int phone_flag = 0;
 volatile int max_flag = 0;
@@ -223,6 +233,7 @@ __interrupt void Port_2_ISR(void)
                                         //
 
                       //TEST MODE MACROS. ONLY 1 AT A TIME CAN BE ENABLED. //
+// PASSED TESTS: TEST_MAX_SPI, TEST_MAX_ID, TEST_MAX_CONFIG, TEST_MAX_START, TEST_MAX_READ
 #define TEST_MODE             1
 // if test mode enabled...
 #define TEST_ST25_WRITE       0
@@ -230,11 +241,11 @@ __interrupt void Port_2_ISR(void)
 #define TEST_ST25_GPO         0
 #define TEST_ST25_MAILBOX     0
 
-#define TEST_MAX_SPI          1
+#define TEST_MAX_SPI          0
 #define TEST_MAX_ID           0
 #define TEST_MAX_CONFIG       0
 #define TEST_MAX_START        0
-#define TEST_MAX_READ         0
+#define TEST_MAX_READ         1
 #define TEST_MAX_2SPOT        0
 #define TEST_MAX_2SPOT_MANUAL 0
 #define TEST_DEMO_PHONE_TRIGGER_BIOZ 0
@@ -418,6 +429,7 @@ int main(void)
 	    __delay_cycles(10000); // 10ms delay
 
 	    info = max30002_read_info(); // read info register just as a test for SPI communication
+	    debug_info = info;
 	    if ((info & 0xF03000) == 0x501000) { // MAX30001 INFO fixed bits: D[23:20] = 0101 and D[13:12] = 01. Mask 0xF03000 should equal 0x501000. INFO is not valid as the first command after SW_RST.
 
 	        led_pulse_transmission(); // pulse LED if what read looks valid
@@ -436,10 +448,13 @@ int main(void)
 	    max30002_write_reg(MAX_REG_EN_INT, 0x000002); // writing to low bits of EN_INT register. Open drain NMOS without internal pull up
 	    __delay_cycles(10000); // 10 ms delay
 	    en_int_read = max30002_read_reg(MAX_REG_EN_INT); // read what we just wrote
+	    debug_en_int_read = en_int_read;
 	    if ((en_int_read & 0x000003) == MAX_INTB_OPEN_DRAIN) { // lower bits should be '10 (2 decimal)' for open drain
+	        debug_config_pass = 1;
 	        led_pulse_transmission(); // config write/read worked
 	    }
 	    else {
+	        debug_config_pass = 2;
 	        error_handler(); // solid LED if error
 	    }
 	    __delay_cycles(1000000); // 1 second between tests
@@ -480,6 +495,12 @@ int main(void)
 	    bmux_read     = max30002_read_reg(MAX_REG_CNFG_BMUX);
 	    bioz_read     = max30002_read_reg(MAX_REG_CNFG_BIOZ);
 
+	    debug_en_int_start = en_int_read;
+	    debug_mngr_int_start = mngr_int_read;
+	    debug_gen_start = gen_read;
+	    debug_bmux_start = bmux_read;
+	    debug_bioz_start = bioz_read;
+
 	    if (((en_int_read & MAX_CFG_EN_INT_START) == MAX_CFG_EN_INT_START) && // check that the registers have been altered
 	                ((mngr_int_read & MAX_CFG_MNGR_INT_START) == MAX_CFG_MNGR_INT_START) &&
 	                ((gen_read & MAX_CFG_CNFG_GEN_START) == MAX_CFG_CNFG_GEN_START) &&
@@ -487,12 +508,14 @@ int main(void)
 	                (bioz_read == MAX_CFG_CNFG_BIOZ_START)) {
 	        int i;
 	        for (i = 0; i < 6; i++) {
+	                        debug_start_pass = 1;
 	                        led_blink_measuring(); // Blink while measuring if success
 	                    }
 
 	                    led_idle(); // stop blinking
 	                }
 	                else {
+	                    debug_start_pass = 2;
 	                    error_handler(); // solid LED if config/start failed
 	    }
 	    __delay_cycles(1000000); // 1 second between tests
@@ -532,6 +555,7 @@ int main(void)
 	                        status = max30002_read_status(); // read its status
 
 	                        if (status & MAX_STATUS_BOVF) { // checking first for global overflow
+	                            debug_bovf_count++;
 	                            max30002_fifo_reset();
 	                            continue; // go back to waiting for next MAX interrupt
 	                        }
@@ -998,6 +1022,7 @@ int32_t max30002_collect_bioz_average(uint16_t sample_goal) { // Helper function
         status = max30002_read_status();
 
         if (status & MAX_STATUS_BOVF) { // if FIFO overflow happened, clear FIFO and keep trying
+            debug_bovf_count++;
             max30002_fifo_reset();
             continue;
         }
