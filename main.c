@@ -241,27 +241,26 @@ __interrupt void Port_2_ISR(void)
                                         //
 
                       //TEST MODE MACROS. ONLY 1 AT A TIME CAN BE ENABLED. //
-// PASSED TESTS: TEST_MAX_SPI, TEST_MAX_ID, TEST_MAX_CONFIG, TEST_MAX_START, TEST_MAX_READ
-#define TEST_MODE             1
+// PASSED TESTS: TEST_MAX_SPI, TEST_MAX_ID, TEST_MAX_CONFIG, TEST_MAX_START, TEST_MAX_READ, TEST_MAX_2SPOT_MANUAL
+#define TEST_MODE                 1
 // if test mode enabled...
-#define TEST_ST25_WRITE       0
-#define TEST_ST25_READ        0
-#define TEST_ST25_GPO         0
-#define TEST_ST25_MAILBOX     0
+#define TEST_ST25_WRITE           0
+#define TEST_ST25_READ            0
+#define TEST_ST25_GPO             0
+#define TEST_ST25_MAILBOX         0
 
-#define TEST_MAX_SPI          0
-#define TEST_MAX_ID           0
-#define TEST_MAX_CONFIG       0
-#define TEST_MAX_START        0
-#define TEST_MAX_READ         0
-#define TEST_MAX_2SPOT        0
-#define TEST_MAX_2SPOT_MANUAL 1
-#define TEST_DEMO_PHONE_TRIGGER_BIOZ 0
-#define DEMO_FAKE_BIOZ_VALUE         0
+#define TEST_MAX_SPI              0
+#define TEST_MAX_ID               0
+#define TEST_MAX_CONFIG           0
+#define TEST_MAX_START            0
+#define TEST_MAX_READ             0
+#define TEST_MAX_2SPOT            0
+#define TEST_MAX_2SPOT_MANUAL     0
+#define TEST_DEMO_S1_BIOZ_TO_ST25 1
 
 
 #define USE_BIOZ_MUX        (TEST_MAX_2SPOT || TEST_MAX_START || TEST_MAX_READ)
-#define USE_EXP430_S1       TEST_MAX_2SPOT_MANUAL
+#define USE_EXP430_S1       (TEST_MAX_2SPOT_MANUAL || TEST_DEMO_S1_BIOZ_TO_ST25)
 #define USE_MSP_FCLK          0
 
 
@@ -317,6 +316,11 @@ void bioz_prepare_selected_path(void);
 int32_t max30002_collect_bioz_average(uint16_t sample_goal);
 void button_s1_init(void);
 void wait_for_s1_press(void);
+uint16_t append_str(uint8_t *buf, uint16_t idx, uint16_t max, const char *s);
+uint16_t append_int32(uint8_t *buf, uint16_t idx, uint16_t max, int32_t value);
+uint16_t append_signed_x10(uint8_t *buf, uint16_t idx, uint16_t max, int32_t value_x10);
+uint16_t build_bioz_ndef_text_msg(uint8_t *out, uint16_t max_len, int32_t target_raw, int32_t reference_raw);
+uint16_t append_uint32_no_sign(uint8_t *buf, uint16_t idx, uint16_t max, uint32_t value); // Appends an unsigned integer as ASCII text with no plus sign
                                         //
 
 int main(void)
@@ -343,10 +347,10 @@ int main(void)
 	#endif
 	gpo_init();
 	max_int_init();
-#if TEST_ST25_MAILBOX
-	if (!enable_mailbox()) { // only enable FTM/mailbox when running mailbox test. No FTM during EEPROM tests
-	    error_handler();
-	}
+#if (TEST_ST25_MAILBOX || TEST_DEMO_S1_BIOZ_TO_ST25 || TEST_DEMO_PHONE_TRIGGER_BIOZ)
+    if (!enable_mailbox()) { // enable FTM/mailbox when demo needs ST25 mailbox
+        error_handler();
+    }
 #endif
 	__enable_interrupt(); // enabling global interrupts
 
@@ -655,6 +659,43 @@ int main(void)
 
 	led_pulse_transmission(); // pulse for success in baseline measurement
 	__delay_cycles(1000000);
+
+#elif TEST_DEMO_S1_BIOZ_TO_ST25 // Demo: S1 press #1 measures target, S1 press #2 measures reference, then result is written to ST25DV mailbox for phone read.
+    int32_t target_avg;
+    int32_t reference_avg;
+    int32_t diff;
+    uint8_t msg[180]; // buffer for final NDEF message
+    uint16_t msg_len; // length of message
+
+    max30002_configure_bioz_once(); // configure BioZ startup once
+
+    wait_for_s1_press(); // STEP 1: Place electrodes on target. Press S1 when ready.
+    bioz_prepare_selected_path();
+    target_avg = max30002_collect_bioz_average(16); // average of 16
+    debug_target_bioz = target_avg; // debug
+    led_pulse_transmission(); // pulse for target complete
+
+    wait_for_s1_press(); // STEP 2: Move same electrodes to reference area. Press S1 when ready.
+    bioz_prepare_selected_path();
+    reference_avg = max30002_collect_bioz_average(16);
+    debug_baseline_bioz = reference_avg; // debug
+
+    diff = target_avg - reference_avg;
+    debug_bioz_diff = diff; // debug
+
+    msg_len = build_bioz_ndef_text_msg(msg, sizeof(msg), target_avg, reference_avg); // using helper function to build a message to phone
+    if (msg_len == 0) { // if empty
+        error_handler();
+    }
+
+    if (mailbox_write(msg, msg_len)) { // write complete NDEF to ST25 mailbox
+        led_pulse_transmission(); // pulse means ST25 mailbox write worked
+    }
+    else {
+        error_handler(); // if error, solid LED
+    }
+
+    __delay_cycles(1000000); // wait 1 sec
 
     #endif // ends test chain
     #endif // end program
@@ -1135,6 +1176,192 @@ int32_t max30002_collect_bioz_average(uint16_t sample_goal) // takes average of 
     }
 
     return (avg1 + avg2) / 2; // blocks agree, use both
+}
+
+uint16_t append_str(uint8_t *buf, uint16_t idx, uint16_t max, const char *s) // appends a normal null-terminated C string into byte buffer
+{
+    while (*s && idx < max) { // copy until end of buffer full
+        buf[idx++] = (uint8_t)(*s++); // copy character by character into buffer
+    }
+    return idx; // return updated buffer index.
+}
+
+uint16_t append_int32(uint8_t *buf, uint16_t idx, uint16_t max, int32_t value) // signed 32-bit integer into readable ASCII. i.e 10 to +10
+{
+    char temp[12]; // temp storage for digits
+    uint8_t i = 0; // how many digits stored in temp
+    uint8_t j;
+
+    if (value < 0) { // if neg num
+        if (idx < max) { // if there is room in buffer
+            buf[idx++] = '-'; // append minus sign
+        }
+        value = -value; // get positive val to extract digits
+    }
+    else {
+        if (idx < max) { // if value positive
+            buf[idx++] = '+'; // append + sign
+        }
+    }
+
+    if (value == 0) { // if zero
+        if (idx < max) {
+            buf[idx++] = '0'; // append zero
+        }
+        return idx; // return updated index
+    }
+
+    while (value > 0 && i < sizeof(temp)) { // extract digits from R to L
+        temp[i++] = (char)('0' + (value % 10)); // LSD stored as ASCII
+        value /= 10; // drop LSD
+    }
+
+    for (j = 0; j < i; j++) { // copy digits in reverse order so num reads right
+        if (idx < max) {
+            buf[idx++] = temp[i - 1 - j];
+        }
+    }
+
+    return idx; // return updated index in buffer
+}
+
+uint16_t append_uint32_no_sign(uint8_t *buf, uint16_t idx, uint16_t max, uint32_t value)     // Appends an unsigned integer as readable ASCII text. Example: value = 6285 becomes "6285". This is used for Target and Reference because those do not need plus signs.
+{
+    char temp[12]; // Temporary reversed digit storage
+    uint8_t i = 0; // Counts how many digits were stored in temp
+    uint8_t j; // Loop index used when copying digits back in correct order
+    if (value == 0) { // Special case because digit extraction loop would not run for zero
+        if (idx < max) { // Make sure there is buffer room
+            buf[idx++] = '0'; // Append ASCII zero
+        }
+        return idx; // Return updated index
+    }
+    while (value > 0 && i < sizeof(temp)) { // Extract digits from right to left
+        temp[i++] = (char)('0' + (value % 10)); // Store current least significant digit as ASCII
+        value /= 10; // Drop the least significant digit
+    }
+    for (j = 0; j < i; j++) { // Copy digits back in reverse order so number reads correctly
+        if (idx < max) { // Make sure there is buffer room
+            buf[idx++] = temp[i - 1 - j]; // Append next digit in correct order
+        }
+    }
+    return idx; // Return updated buffer index
+}
+
+uint16_t append_signed_x10(uint8_t *buf, uint16_t idx, uint16_t max, int32_t value_x10) // append signed fixed pt num with a decimal place. i.e. value_x10 = 55 goes to +5.5
+{
+    int32_t whole; // whole num part
+    int32_t frac; // fraction
+    char temp[12]; // temp digit storage reversed
+    uint8_t i = 0;
+    uint8_t j;
+
+    if (value_x10 < 0) { // negative
+        if (idx < max) {
+            buf[idx++] = '-'; // append -
+        }
+        value_x10 = -value_x10;
+    }
+    else {
+        if (idx < max) { // positive
+            buf[idx++] = '+'; // append positive
+        }
+    }
+
+    whole = value_x10 / 10; // whole num part
+    frac = value_x10 % 10; // remainder gives decimal digit
+
+    if (whole == 0) { // if whole num is zero
+        if (idx < max) {
+            buf[idx++] = '0'; // append zero before decimal pt
+        }
+    }
+    else { // if whole num is nonzero
+        while (whole > 0 && i < sizeof(temp)) { // extract whole num digits from R to L
+            temp[i++] = (char)('0' + (whole % 10));
+            whole /= 10;
+        }
+
+        for (j = 0; j < i; j++) { // copy digits back in correct order
+            if (idx < max) {
+                buf[idx++] = temp[i - 1 - j];
+            }
+        }
+    }
+
+    if (idx < max) { // ensure buffer room
+        buf[idx++] = '.'; // decimal pt append
+    }
+
+    if (idx < max) {
+        buf[idx++] = (uint8_t)('0' + frac); // append one decial digit
+    }
+
+    return idx;
+}
+
+uint16_t build_bioz_ndef_text_msg(uint8_t *out, uint16_t max_len, int32_t target_raw, int32_t reference_raw) // builds NDEF text record phone can read from ST25 mailbox
+{
+    uint8_t text[150]; // buffer for text payload
+    uint16_t ti = 0; // current index into text buf
+    uint16_t i; // loop for copy text into NDEF
+    uint16_t payload_len;
+    uint16_t total_len; // NDEF payload length
+    int32_t diff; // raw diff b/w target and ref
+    int32_t percent; // percent diff, int
+    int32_t zdiff_x10; // approx ohm difference multiplied by 10
+
+    diff = target_raw - reference_raw; // calc raw target vs ref diff
+
+    if (reference_raw != 0) { // avoid div by 0 if reference failed
+        percent = (int32_t)(((int64_t)diff * 100) / reference_raw); // percent diff = 100 * diff / reference
+    }
+    else {
+        percent = 0; // percent is 0 if reference is 0
+    }
+
+    zdiff_x10 = (int32_t)(((int64_t)diff * 900) / 15946); // approx ohm diff x10 using 1k ohm resistor calibration: raw * 90 / 15946, then x10.
+
+    ti = append_str(text, ti, sizeof(text), "BIOZ CHECK: ");
+    ti = append_int32(text, ti, sizeof(text), percent);
+    ti = append_str(text, ti, sizeof(text), "% target-vs-ref\n\n");
+
+    ti = append_str(text, ti, sizeof(text), "Difference: ");
+    ti = append_int32(text, ti, sizeof(text), diff);
+    ti = append_str(text, ti, sizeof(text), " raw\n");
+
+    ti = append_str(text, ti, sizeof(text), "Approx diff: ");
+    ti = append_signed_x10(text, ti, sizeof(text), zdiff_x10);
+    ti = append_str(text, ti, sizeof(text), " ohm\n\n");
+
+    ti = append_str(text, ti, sizeof(text), "Target: "); // Label target raw value line
+    ti = append_uint32_no_sign(text, ti, sizeof(text), (uint32_t)target_raw); // Append target raw value without plus sign
+    ti = append_str(text, ti, sizeof(text), " raw\n"); // Add units and new line
+
+    ti = append_str(text, ti, sizeof(text), "Reference: "); // Label reference raw value line
+    ti = append_uint32_no_sign(text, ti, sizeof(text), (uint32_t)reference_raw); // Append reference raw value without plus sign
+    ti = append_str(text, ti, sizeof(text), " raw"); // Add units without final newline
+
+    payload_len = 3 + ti; // NDEF text payload has status byte and 2 byte lang code plus text length
+    total_len = 4 + payload_len; // NDEF short record header is 4 bytes before payload
+
+    if (total_len > max_len || payload_len > 255) { // check output buf size and NDEF short record payload lim
+        return 0; // fail if message didn't fit
+    }
+
+    out[0] = 0xD1; // NDEF header
+    out[1] = 0x01; // type length 1 byte
+    out[2] = (uint8_t)payload_len; // payload length
+    out[3] = 'T'; // Text type
+    out[4] = 0x02; // text status byte
+    out[5] = 'e';
+    out[6] = 'n';
+
+    for (i = 0; i < ti; i++) { // copy human readable text into final NDEF payload
+        out[7 + i] = text[i]; // final payload text starts after NDEF header, statys byte, lang code
+    }
+
+    return total_len; // return total # bytes to write to ST25DV mailbox
 }
 
 // LED STATUS INDICATORS
