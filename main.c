@@ -193,6 +193,7 @@ __interrupt void Port_2_ISR(void)
 #define BIOZ_SELECT_TARGET()    (P2OUT |= BIOZ_MUX_SEL_BIT)
 #define BIOZ_SELECT_BASELINE()  (P2OUT &= ~BIOZ_MUX_SEL_BIT)
 #define BIOZ_DISCARD_SAMPLES 64
+#define BIOZ_BLOCK_MISMATCH_LIMIT 500
 
                                     //
 
@@ -556,8 +557,6 @@ int main(void)
 
 	                __delay_cycles(100000);
 
-
-	                printf("sample_count,status,raw,tag,bioz,bovf_count\n");
 	                debug_print_count = 0;
 
 // READ LOOP:
@@ -1026,67 +1025,92 @@ void bioz_prepare_selected_path(void) { // helper function to get ready for BioZ
 
 }
 
-int32_t max30002_collect_bioz_average(uint16_t sample_goal) // Helper function that collects an average of n settled bioimpedance measurements
+int32_t max30002_collect_bioz_average(uint16_t sample_goal) // takes average of n x 2 samples; if the n first trials and the n second trials are not similar, it will discard the outlier.
 {
     uint32_t status;
     uint32_t raw;
     uint8_t tag;
     int32_t bioz;
-    int64_t sum = 0;
-    uint16_t count = 0;
+
+    int64_t sum1 = 0;
+    int64_t sum2 = 0;
+
+    uint16_t count1 = 0;
+    uint16_t count2 = 0;
     uint16_t discard_count = 0;
-    while (count < sample_goal) {
+
+    int32_t avg1;
+    int32_t avg2;
+    int32_t diff;
+
+    while (count2 < sample_goal) {
         if (!max_flag) {
             continue;
         }
+
         max_flag = 0;
         status = max30002_read_status();
-        if (status & MAX_STATUS_BOVF) {
+
+        if (status & MAX_STATUS_BOVF) { // if FIFO overflow happened, clear FIFO and keep trying
             debug_bovf_count++;
             max30002_fifo_reset();
             max30002_synch();
-            discard_count = 0;             // Start discard process over after overflow
-            count = 0;
-            sum = 0;
+
+            discard_count = 0; // restart discard after overflow
+            count1 = 0;
+            count2 = 0;
+            sum1 = 0;
+            sum2 = 0;
+
             continue;
         }
-        while ((status & MAX_STATUS_BINT) && (count < sample_goal)) {
-            raw = max30002_read_fifo();
-            tag = raw & 0x07;
 
-            if (tag == 0x07) {                 // FIFO overflow tag
+        while ((status & MAX_STATUS_BINT) && (count2 < sample_goal)) {
+            raw = max30002_read_fifo(); // getting raw data from MAX
+            tag = raw & 0x07; // get FIFO overflow tag
+
+            if (tag == 0x07) { // FIFO overflow tag
                 debug_bovf_count++;
                 max30002_fifo_reset();
                 max30002_synch();
-                discard_count = 0;
-                count = 0;
-                sum = 0;
-                break;
-            }
-            if (tag == 0x06) {
-                // FIFO empty tag
-                break;
-            }
-            if (tag == 0x00 || tag == 0x02) { // Valid BioZ sample or valid BioZ EOF sample
-                bioz = bioz_parse(raw);
-                debug_bioz = bioz;
-                sample_count++;
 
-                if (discard_count < BIOZ_DISCARD_SAMPLES) {  // Throw away early settling samples
+                discard_count = 0; // restart discard after overflow
+                count1 = 0;
+                count2 = 0;
+                sum1 = 0;
+                sum2 = 0;
+
+                break;
+            }
+
+            if (tag == 0x06) { // if FIFO empty, try again
+                break;
+            }
+
+            if (tag == 0x00 || tag == 0x02) { // valid sample or valid EOF
+                bioz = bioz_parse(raw); // parse data
+                debug_bioz = bioz; // debug bioz
+                sample_count++; // for debug
+
+                if (discard_count < BIOZ_DISCARD_SAMPLES) { // Throw away early settling samples
                     discard_count++;
                 }
-                else {  // Only settled samples are averaged
-                    sum += bioz;
-                    count++;
+                else if (count1 < sample_goal) { // first settled block
+                    sum1 += bioz; // sum added
+                    count1++; // counter incremented
+                }
+                else { // second settled block
+                    sum2 += bioz; // sum added
+                    count2++; // counter incremented
                 }
             }
 
-            if (tag == 0x01 || tag == 0x03) {    // Over-range or under-range sample
+            if (tag == 0x01 || tag == 0x03) { // over/under range
                 bioz = bioz_parse(raw);
                 debug_bioz = bioz;
             }
 
-            if (tag == 0x02 || tag == 0x03) {                 // EOF tags
+            if (tag == 0x02 || tag == 0x03) { // EOF tags
                 break;
             }
 
@@ -1094,11 +1118,23 @@ int32_t max30002_collect_bioz_average(uint16_t sample_goal) // Helper function t
         }
     }
 
-    if (count == 0) {
+    if (count1 == 0 || count2 == 0) { // error if no count
         return 0;
     }
 
-    return (int32_t)(sum / count);
+    avg1 = (int32_t)(sum1 / count1); // averaging the first 16 samples
+    avg2 = (int32_t)(sum2 / count2); // averaging the second 16 samples
+
+    diff = avg1 - avg2; // compare first settled block to second settled block
+    if (diff < 0) {
+        diff = -diff; // take ||
+    }
+
+    if (diff > BIOZ_BLOCK_MISMATCH_LIMIT) { // first block likely still settling or contact artifact if difference is over 500
+        return avg2; // use later block only
+    }
+
+    return (avg1 + avg2) / 2; // blocks agree, use both
 }
 
 // LED STATUS INDICATORS
