@@ -87,6 +87,27 @@ volatile uint32_t debug_bmux_start = 0;
 volatile uint32_t debug_bioz_start = 0;
 volatile uint8_t debug_start_pass = 0;
 volatile uint32_t debug_bovf_count = 0;
+volatile uint8_t demo_msg[180] = {0};
+volatile uint16_t demo_msg_len = 0;
+volatile int32_t demo_fake_target = 6285;
+volatile int32_t demo_fake_reference = 5316;
+volatile uint8_t debug_st25_ctrl = 0;
+volatile uint8_t debug_st25_sso = 0;
+volatile uint8_t debug_st25_mb_mode = 0;
+volatile uint8_t debug_st25_fail_step = 0;
+volatile uint8_t debug_ctrl_user = 0;
+volatile uint8_t debug_ctrl_data = 0;
+volatile uint8_t debug_st25_ctrl_after_write = 0; // MB_CTRL_DYN after mailbox write
+volatile uint8_t debug_st25_mb_len_after_write = 0; // MB_LEN_DYN after mailbox write
+volatile uint8_t debug_st25_mailbox_test_addr = 0; // 0x53 or 0x2D used for mailbox message write
+volatile unsigned int debug_eeprom_offset = 0; // EEPROM chunk offset during NDEF write
+volatile unsigned int debug_eeprom_total_len = 0; // total TLV length being written
+volatile unsigned int debug_eeprom_chunk_len = 0; // current chunk length
+volatile uint8_t debug_eeprom_fail_reason = 0; // 1=len/null fail, 2=chunk write fail
+volatile uint8_t demo_result_pending = 0; // 0 = next tap measures/writes result, 1 = next tap resets tag to rea
+volatile uint8_t debug_max_collect_failed = 0;
+volatile uint32_t debug_max_wait_timeout_count = 0;
+
 
 volatile int phone_flag = 0;
 volatile int max_flag = 0;
@@ -206,6 +227,7 @@ __interrupt void Port_2_ISR(void)
 // E2 = 1 -> system configuration area
 #define ST25DV_ADDR_USER              0x53
 #define ST25DV_ADDR_SYSTEM            0x57
+#define ST25DV_ADDR_DATA              0x2D // ST25DV third I2C address; likely used for data/FTM/mailbox functions
 
 // ST25DV user EEPROM test address
 #define ST25DV_TEST_EEPROM_ADDR       0x01F0
@@ -237,17 +259,22 @@ __interrupt void Port_2_ISR(void)
 // I2C_SSO_Dyn bits
 #define ST25DV_I2C_SSO_OPEN           0x01
 
+// URL info
+#define BIOZ_URL_READY "apps.powerapps.com/play/acef55d5-b582-4b23-9945-7312b9c0f7d5?tenantId=d196a604-d993-4028-90df-e223d68126d2&mode=ready"
+#define BIOZ_URL_RESULT_BASE "apps.powerapps.com/play/acef55d5-b582-4b23-9945-7312b9c0f7d5?tenantId=d196a604-d993-4028-90df-e223d68126d2&mode=result&b="
 
                                         //
 
                       //TEST MODE MACROS. ONLY 1 AT A TIME CAN BE ENABLED. //
-// PASSED TESTS: TEST_MAX_SPI, TEST_MAX_ID, TEST_MAX_CONFIG, TEST_MAX_START, TEST_MAX_READ, TEST_MAX_2SPOT_MANUAL
+// PASSED TESTS: TEST_MAX_SPI, TEST_MAX_ID, TEST_MAX_CONFIG, TEST_MAX_START, TEST_MAX_READ, TEST_MAX_2SPOT_MANUAL, TEST_BUILD_BIOZ_MSG_ONLY, TEST_ST25_READ, TEST_ST25_WRITE, TEST_ST25_GPO
 #define TEST_MODE                 1
 // if test mode enabled...
 #define TEST_ST25_WRITE           0
 #define TEST_ST25_READ            0
 #define TEST_ST25_GPO             0
-#define TEST_ST25_MAILBOX         0
+#define TEST_ST25_MAILBOX         1
+#define TEST_ST25_ADDR_DEBUG      0
+#define TEST_ST25_MB_CTRL_WRITE   0
 
 #define TEST_MAX_SPI              0
 #define TEST_MAX_ID               0
@@ -256,13 +283,14 @@ __interrupt void Port_2_ISR(void)
 #define TEST_MAX_READ             0
 #define TEST_MAX_2SPOT            0
 #define TEST_MAX_2SPOT_MANUAL     0
-#define TEST_DEMO_S1_BIOZ_TO_ST25 1
+#define TEST_DEMO_S1_BIOZ_TO_ST25 0
+#define TEST_BUILD_BIOZ_MSG_ONLY  0
 
 
 #define USE_BIOZ_MUX        (TEST_MAX_2SPOT || TEST_MAX_START || TEST_MAX_READ)
 #define USE_EXP430_S1       (TEST_MAX_2SPOT_MANUAL || TEST_DEMO_S1_BIOZ_TO_ST25)
 #define USE_MSP_FCLK          0
-
+#define DEMO_WRITE_READY_ON_BOOT 1
 
 
                                         //
@@ -280,10 +308,12 @@ __interrupt void Port_2_ISR(void)
 int st25dv_write(uint8_t slave, uint16_t mem_addr, uint8_t data);
 void i2c_init();
 void i2c_pins_init();
+void i2c_bus_recover(void);
 void error_handler(void);
 void led_blink_measuring(void);
 void led_pulse_transmission(void);
 void led_idle(void);
+void led_double_pulse(void);
 uint8_t st25dv_read(uint8_t slave, uint16_t addr);
 void gpo_init();
 int mailbox_write(uint8_t *message, unsigned int length);
@@ -293,7 +323,9 @@ int i2c_send_and_check(uint8_t byte);
 int enable_mailbox(void);
 int st25dv_present_i2c_password(void);
 int st25dv_i2c_session_is_open(void);
+int st25dv_write_ndef_text_eeprom(uint8_t *ndef_msg, unsigned int ndef_len); // Writes a complete NDEF message into normal ST25 EEPROM tag memory
 int st25dv_mailbox_is_free(void);
+int wait_tx_ready_timeout(void);
 int st25dv_write_sequence(uint8_t slave, uint16_t mem_addr, uint8_t *data, unsigned int length);
 void max_int_init(void);
 void wait_rx_ready(void);
@@ -321,7 +353,10 @@ uint16_t append_int32(uint8_t *buf, uint16_t idx, uint16_t max, int32_t value);
 uint16_t append_signed_x10(uint8_t *buf, uint16_t idx, uint16_t max, int32_t value_x10);
 uint16_t build_bioz_ndef_text_msg(uint8_t *out, uint16_t max_len, int32_t target_raw, int32_t reference_raw);
 uint16_t append_uint32_no_sign(uint8_t *buf, uint16_t idx, uint16_t max, uint32_t value); // Appends an unsigned integer as ASCII text with no plus sign
-                                        //
+uint16_t append_url_int32(uint8_t buf[], uint16_t idx, uint16_t max, int32_t value);
+uint16_t append_url_x10(uint8_t buf[], uint16_t idx, uint16_t max, int32_t value_x10);
+uint16_t build_ready_url_ndef(uint8_t out[], uint16_t max_len);
+//
 
 int main(void)
 {
@@ -334,6 +369,7 @@ int main(void)
 	// init
 	i2c_pins_init();
 	i2c_init();
+	i2c_bus_recover(); // force I2C bus/pins back to clean idle state after previous stuck transaction
 	spi_pins_init();
 	spi_init();
 	#if USE_BIOZ_MUX
@@ -347,7 +383,35 @@ int main(void)
 	#endif
 	gpo_init();
 	max_int_init();
-#if (TEST_ST25_MAILBOX || TEST_DEMO_S1_BIOZ_TO_ST25 || TEST_DEMO_PHONE_TRIGGER_BIOZ)
+#if DEMO_WRITE_READY_ON_BOOT
+    {
+        uint8_t msg[260];
+        uint16_t msg_len;
+
+        debug_st25_fail_step = 80; // writing ready URL at boot
+
+        msg_len = build_ready_url_ndef(msg, sizeof(msg));
+
+        if (msg_len == 0) {
+            debug_st25_fail_step = 81; // ready URL builder failed at boot
+            error_handler();
+        }
+
+        if (st25dv_write_ndef_text_eeprom(msg, msg_len)) {
+            demo_result_pending = 0;
+            debug_st25_fail_step = 0;
+            led_double_pulse(); // boot ready reset complete
+        }
+        else {
+            debug_st25_fail_step = 82; // ready URL EEPROM write failed at boot
+            error_handler();
+        }
+
+        phone_flag = 0; // clear any stale GPO event from startup
+        P2IFG &= ~BIT0;
+    }
+#endif
+#if (TEST_DEMO_S1_BIOZ_TO_ST25 || TEST_DEMO_PHONE_TRIGGER_BIOZ)
     if (!enable_mailbox()) { // enable FTM/mailbox when demo needs ST25 mailbox
         error_handler();
     }
@@ -390,34 +454,181 @@ int main(void)
 	        led_idle(); // LED stays off
 	    }
 
-    #elif TEST_ST25_MAILBOX // TEST 4: Phone tap, MCU writes to mailbox, LED blinks to confirm
-	    if (phone_flag) {
-	            phone_flag = 0; // clear interrupt
-	            uint8_t msg[] = {
-	                0xD1, // NDEF header byte to tell phone it's NFC text
-	                0x01, // length of type field
-	                0x15, // payload length (1 status byte + 2 "en" + 18 message length)
+#elif TEST_ST25_MAILBOX // Phone tap demo: ready -> result -> auto reset ready using phone_flag only
+        if (phone_flag) {
+            phone_flag = 0;
 
-	                'T', // type field T for text
+            uint8_t msg[260];
+            uint16_t msg_len;
 
-	                0x02, 'e', 'n', // status byte, then language code (english, 2 chars)
+            if (demo_result_pending == 0) {
+                // First tap: user is on ready/alignment page.
+                // Wait a bit so phone finishes reading the ready URL, then measure and write result.
 
-	                'H','e','l','l','o',' ', // message
-	                'f','r','o','m',' ',
-	                'M','S','P','4','3','0','!'
-	            };
+                int32_t target_avg;
+                int32_t reference_avg;
 
-	            if (mailbox_write(msg, sizeof(msg))) { // write to mailbox
-	               led_pulse_transmission(); // if success, pulse
-	            }
-	                else {
-	                   error_handler();
-	                }
-	            __delay_cycles(200000);
-	                }
-	                else { // if no phone flag
-	                    led_idle();
-	                }
+                // TARGET MEASUREMENT
+                debug_st25_fail_step = 60; // entered first tap / measure-result path
+
+                __delay_cycles(2000000); // 2 sec delay after NFC trigger
+
+
+                debug_st25_fail_step = 65; // about to configure MAX
+
+                debug_max_collect_failed = 0;
+                debug_max_wait_timeout_count = 0;
+                max_flag = 0;
+
+                max30002_configure_bioz_once();
+
+                debug_st25_fail_step = 66; // MAX configured, preparing selected path
+                BIOZ_SELECT_TARGET();
+                bioz_prepare_selected_path();
+
+                debug_st25_fail_step = 67; // collecting live MAX BioZ average
+
+                target_avg = max30002_collect_bioz_average(16);
+
+                if (debug_max_collect_failed) {
+                    debug_st25_fail_step = 68; // MAX BioZ collection timed out
+                    error_handler();
+                }
+                // BASELINE MEASUREMENT
+                debug_max_collect_failed = 0;
+                debug_max_wait_timeout_count = 0;
+                max_flag = 0;
+                debug_st25_fail_step = 69; // selecting baseline path
+                BIOZ_SELECT_BASELINE();
+
+                bioz_prepare_selected_path();
+
+                debug_st25_fail_step = 70; // collecting baseline BioZ average
+
+                reference_avg = max30002_collect_bioz_average(16);
+
+                if (debug_max_collect_failed) {
+                    debug_st25_fail_step = 71; // baseline MAX BioZ collection timed out
+                    error_handler();
+                }
+
+
+                debug_target_bioz = target_avg;
+                debug_baseline_bioz = reference_avg;
+                debug_bioz_diff = target_avg - reference_avg;
+
+                debug_st25_fail_step = 67; // BioZ collected, about to build result URL
+
+                msg_len = build_bioz_ndef_text_msg(msg, sizeof(msg), target_avg, reference_avg);
+
+                if (msg_len == 0) {
+                    debug_st25_fail_step = 61; // result URL builder failed
+                    error_handler();
+                }
+
+                debug_st25_fail_step = 62; // result URL built, about to write EEPROM
+
+                if (st25dv_write_ndef_text_eeprom(msg, msg_len)) {
+                    __delay_cycles(100000);
+
+                    demo_result_pending = 1; // next tap resets to ready
+                    phone_flag = 0; // clear stale phone event that may have occurred during processing
+                    P2IFG &= ~BIT0; // clear stale GPO interrupt flag
+
+                    debug_st25_fail_step = 0;
+                    led_pulse_transmission(); // one pulse = result saved
+                }
+                else {
+                    debug_st25_fail_step = 63; // result EEPROM write failed
+                    error_handler();
+                }
+            }
+            else {
+                // Second tap: phone is opening the result page.
+                // Wait long enough for user/phone to load result, then reset tag to ready.
+
+                debug_st25_fail_step = 70; // entered second tap / reset-ready path
+
+                __delay_cycles(5000000); // 5 sec delay so phone can open/read result URL
+
+                msg_len = build_ready_url_ndef(msg, sizeof(msg));
+
+                if (msg_len == 0) {
+                    debug_st25_fail_step = 71; // ready URL builder failed
+                    error_handler();
+                }
+
+                debug_st25_fail_step = 72; // ready URL built, about to write EEPROM
+
+                if (st25dv_write_ndef_text_eeprom(msg, msg_len)) {
+                    __delay_cycles(100000);
+
+                    demo_result_pending = 0; // next tap measures again
+                    phone_flag = 0; // clear stale phone event
+                    P2IFG &= ~BIT0; // clear stale GPO interrupt flag
+
+                    debug_st25_fail_step = 0;
+                    led_double_pulse(); // two pulses = reset to ready
+                }
+
+                else {
+                    debug_st25_fail_step = 73; // ready EEPROM write failed
+                    error_handler();
+                }
+            }
+        }
+        else {
+            led_idle();
+        }
+
+#elif TEST_ST25_ADDR_DEBUG
+    // Debug test: compare mailbox dynamic register reads through 0x53 and 0x2D.
+    // This helps determine which ST25 I2C address is valid for mailbox/FTM status.
+
+    debug_ctrl_user = st25dv_read(ST25DV_ADDR_USER, ST25DV_REG_MB_CTRL_DYN); // read MB_CTRL_DYN using 0x53
+    debug_ctrl_data = st25dv_read(ST25DV_ADDR_DATA, ST25DV_REG_MB_CTRL_DYN); // read MB_CTRL_DYN using 0x2D
+
+    led_pulse_transmission(); // pulse only means the debug read code ran
+
+    __delay_cycles(1000000); // wait 1 second before repeating
+
+#elif TEST_ST25_MB_CTRL_WRITE
+    // Debug test: try to enable the dynamic mailbox bit using the known-good 0x53 user/dynamic-register address.
+    // This test does not write an actual mailbox message yet.
+    // It only checks whether MB_CTRL_DYN bit0, MB_EN, can be set and read back.
+
+    debug_st25_fail_step = 19; // marker: test started and is about to write MB_CTRL_DYN
+    debug_ctrl_user = 0; // clear previous user-address debug read
+    debug_ctrl_data = 0; // clear previous data-address debug read
+
+    if (!st25dv_write(ST25DV_ADDR_USER, ST25DV_REG_MB_CTRL_DYN, ST25DV_MB_CTRL_MB_EN)) { // try to set MB_EN bit using 0x53
+        debug_st25_fail_step = 20; // write to MB_CTRL_DYN through 0x53 failed
+        error_handler();
+    }
+
+    debug_st25_fail_step = 23; // marker: write returned success, now reading MB_CTRL_DYN
+
+    __delay_cycles(10000); // small delay after dynamic register write
+
+    debug_ctrl_user = st25dv_read(ST25DV_ADDR_USER, ST25DV_REG_MB_CTRL_DYN); // read MB_CTRL_DYN using 0x53
+    debug_ctrl_data = st25dv_read(ST25DV_ADDR_DATA, ST25DV_REG_MB_CTRL_DYN); // read MB_CTRL_DYN using 0x2D only for comparison
+
+    if (debug_ctrl_user == 0xFF) { // 0xFF is suspicious because st25dv_read returns 0xFF on failure
+        debug_st25_fail_step = 22; // read through 0x53 returned invalid/all-ones
+        error_handler();
+    }
+
+    if (debug_ctrl_user & ST25DV_MB_CTRL_MB_EN) { // if mailbox enable bit is now set
+        debug_st25_fail_step = 0; // success
+        led_pulse_transmission(); // pulse means MB_EN set successfully
+    }
+    else {
+        debug_st25_fail_step = 21; // write happened, but MB_EN did not stay set
+        error_handler();
+    }
+
+    __delay_cycles(1000000);
+
 
     #elif TEST_MAX_SPI // TEST 5: Basic MAX30002 SPI connection test. Checks to see if reads anything from INFO
 	    uint32_t info;
@@ -697,6 +908,29 @@ int main(void)
 
     __delay_cycles(1000000); // wait 1 sec
 
+
+
+#elif TEST_BUILD_BIOZ_MSG_ONLY
+    // No-hardware test.
+    // This only tests whether the BIOZ NDEF text message is built correctly.
+    // It does not use MAX hardware and does not use ST25 hardware.
+
+    demo_msg_len = build_bioz_ndef_text_msg((uint8_t *)demo_msg,
+                                            sizeof(demo_msg),
+                                            demo_fake_target,
+                                            demo_fake_reference);
+
+    if (demo_msg_len == 0) {
+        error_handler();
+    }
+
+    led_pulse_transmission();
+
+    while (1) {
+        // Hold here so CCS can inspect demo_msg and demo_msg_len.
+    }
+
+
     #endif // ends test chain
     #endif // end program
 
@@ -757,14 +991,57 @@ void wait_tx_ready(void) { // helper function to wait until TX buf ready
     while (!(UCB0IFG & UCTXIFG0));
 }
 
+int wait_tx_ready_timeout(void)
+{
+    uint32_t timeout = 100000;
+
+    while (!(UCB0IFG & UCTXIFG0)) {
+        if (UCB0IFG & UCNACKIFG) {
+            UCB0IFG &= ~UCNACKIFG;
+            UCB0CTLW0 |= UCTXSTP;
+            while (UCB0CTLW0 & UCTXSTP);
+            return 0;
+        }
+
+        if (--timeout == 0) {
+            UCB0CTLW0 |= UCTXSTP;
+            while (UCB0CTLW0 & UCTXSTP);
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
 void wait_rx_ready(void) { // helper function to wait until RX buf ready
     while (!(UCB0IFG & UCRXIFG0));
 }
 
+void i2c_bus_recover(void)
+{
+    UCB0CTLW0 = UCSWRST; // hold I2C peripheral in reset so it releases control of pins
+
+    P1SEL0 &= ~(BIT2 | BIT3); // temporarily make P1.2/P1.3 GPIO, not I2C
+    P1SEL1 &= ~(BIT2 | BIT3);
+
+    P1DIR &= ~(BIT2 | BIT3); // make SDA/SCL inputs
+    P1REN |= BIT2 | BIT3; // enable internal resistors
+    P1OUT |= BIT2 | BIT3; // make resistors pullups
+
+    __delay_cycles(10000); // short settle delay
+
+    P1IFG &= ~(BIT2 | BIT3); // clear any stale flags just in case
+
+    i2c_pins_init(); // put pins back into I2C mode
+    i2c_init(); // reinitialize I2C peripheral
+}
+
 int i2c_send_and_check(uint8_t byte) { // sends a byte and checks to see if recieved
-        UCB0TXBUF = byte; // get byte
-        wait_tx_ready(); // waiting here until byte done sending
-        return check_nack(); // 1 = error, 0 = OK
+    UCB0TXBUF = byte;
+    if (!wait_tx_ready_timeout()) {
+        return 1;
+    }
+    return check_nack();
 }
 int st25dv_write_sequence(uint8_t slave, uint16_t mem_addr, uint8_t * data, unsigned int length) { // helper function to write
     unsigned int i;
@@ -773,7 +1050,7 @@ int st25dv_write_sequence(uint8_t slave, uint16_t mem_addr, uint8_t * data, unsi
     }
     UCB0I2CSA = slave; // setting st25dv as slave
     UCB0CTLW0 |= UCTR | UCTXSTT; // enabling control bits to transmit
-    wait_tx_ready(); // wait for tx
+    if (!wait_tx_ready_timeout()) return 0; // wait for tx with timeout
 
     if (check_nack()) return 0; // if a NACK, then error
 
@@ -818,8 +1095,9 @@ int st25dv_i2c_session_is_open(void) // helper function to ensure password worke
     uint8_t sso;
 
     sso = st25dv_read(ST25DV_ADDR_USER, ST25DV_REG_I2C_SSO_DYN); // read to ensure I2C security session open
+    debug_st25_sso = sso; // save I2C_SSO_DYN value for CCS watch
 
-    if (sso & ST25DV_I2C_SSO_OPEN) {
+    if (sso & ST25DV_I2C_SSO_OPEN) { // if I2C security session is open
         return 1;
     }
 
@@ -831,7 +1109,7 @@ int st25dv_write(uint8_t slave, uint16_t mem_addr, uint8_t data) { // function t
 // SETUP
     UCB0I2CSA = slave; // Target I2C device with slave address 'slave'
     UCB0CTLW0 |= UCTR | UCTXSTT; // Set to transmission mode for master, then transmit START condition in master mode
-    wait_tx_ready(); // waiting here until transit buffer flag set
+    if (!wait_tx_ready_timeout()) return 0; // wait for TX buffer with timeout
     if (check_nack() == 1) return 0; // if NACK, stop and report failure
 // DATA TRANSMISSION
     if (i2c_send_and_check((mem_addr >> 8) & 0xFF)) return 0; // extract/send high byte of 16 bit addr
@@ -868,43 +1146,93 @@ uint8_t st25dv_read(uint8_t slave, uint16_t mem_addr) { // MCU gets address and 
 int enable_mailbox (void) { // helper function to enable FTM mailbox
      uint8_t mb_mode;
 
+     debug_st25_fail_step = 0; // clear previous ST25 mailbox failure before starting
+
      if (!st25dv_present_i2c_password()) { // sending default, all zero password
+             debug_st25_fail_step = 1; // failed while presenting I2C password
              return 0;
          }
+
      if (!st25dv_i2c_session_is_open()) { // confirm I2C security session opened
+             debug_st25_fail_step = 2; // I2C password sent, but I2C security session did not open
              return 0;
          }
-     if (!st25dv_write(ST25DV_ADDR_USER, ST25DV_REG_MB_CTRL_DYN, 0x00)) { // Disable dynamic FTM before changing static system config. This is harmless if FTM is already disabled.
+
+     if (!st25dv_write(ST25DV_ADDR_USER, ST25DV_REG_MB_CTRL_DYN, 0x00)) { // Disable dynamic mailbox before changing static mailbox mode
+         debug_st25_fail_step = 3; // failed while disabling dynamic mailbox
          return 0;
      }
-     mb_mode = st25dv_read(ST25DV_ADDR_SYSTEM, ST25DV_REG_MB_MODE); // Read static MB_MODE register
-     if ((mb_mode & ST25DV_MB_MODE_ENABLE) == 0) { // if FTM auth not enabled, enable it.
-             mb_mode |= ST25DV_MB_MODE_ENABLE; // set MB_MODE bit to allow Fast Transfer Mode/mailbox use
-             if (!st25dv_write(ST25DV_ADDR_SYSTEM, ST25DV_REG_MB_MODE, mb_mode)) { // writing FTM enable
-                         return 0;
-                     }
-             __delay_cycles(10000);
-                }
-                if (!st25dv_write(ST25DV_ADDR_USER,                 // Enable FTM dynamically for runtime mailbox use.
-                                  ST25DV_REG_MB_CTRL_DYN,
-                                  ST25DV_MB_CTRL_MB_EN)) {
-                    return 0;
-                }
-                    return 1;
+
+     __delay_cycles(10000); // short delay after disabling dynamic mailbox
+
+     mb_mode = st25dv_read(ST25DV_ADDR_SYSTEM, ST25DV_REG_MB_MODE); // Read static MB_MODE register from system memory
+     debug_st25_mb_mode = mb_mode; // save MB_MODE value for CCS watch
+
+     // Important:
+     // If mb_mode reads as 0xFF, do NOT treat that as success and do NOT preserve all bits.
+     // Force MB_MODE to known-good mailbox-enabled value instead.
+     // ST25DV_MB_MODE_ENABLE is bit0, so write 0x01.
+     mb_mode = ST25DV_MB_MODE_ENABLE; // force mailbox mode enabled, do not preserve suspicious 0xFF value
+
+     if (!st25dv_write(ST25DV_ADDR_SYSTEM, ST25DV_REG_MB_MODE, mb_mode)) { // write static MB_MODE = 0x01
+         debug_st25_fail_step = 4; // failed while writing static MB_MODE
+         return 0;
+     }
+
+     __delay_cycles(20000); // allow system EEPROM/config write time
+
+     mb_mode = st25dv_read(ST25DV_ADDR_SYSTEM, ST25DV_REG_MB_MODE); // read MB_MODE back after write
+     debug_st25_mb_mode = mb_mode; // save readback for CCS watch
+
+     if ((mb_mode & ST25DV_MB_MODE_ENABLE) == 0) { // confirm MB_MODE bit0 stayed enabled
+         debug_st25_fail_step = 11; // MB_MODE write did not stick
+         return 0;
+     }
+
+     if (!st25dv_write(ST25DV_ADDR_USER, ST25DV_REG_MB_CTRL_DYN, ST25DV_MB_CTRL_MB_EN)) { // Enable mailbox dynamically at runtime
+         debug_st25_fail_step = 5; // failed while enabling dynamic mailbox
+         return 0;
+     }
+
+     __delay_cycles(10000); // short delay after enabling dynamic mailbox
+
+     debug_st25_ctrl = st25dv_read(ST25DV_ADDR_USER, ST25DV_REG_MB_CTRL_DYN); // read dynamic mailbox control for CCS watch
+
+     if ((debug_st25_ctrl & ST25DV_MB_CTRL_MB_EN) == 0) { // confirm dynamic mailbox enable bit is set
+         debug_st25_fail_step = 6; // dynamic mailbox enable bit is not set
+         return 0;
+     }
+
+     debug_st25_fail_step = 0; // mailbox enable completed successfully
+     return 1;
 }
 
 int st25dv_mailbox_is_free(void) {
     uint8_t ctrl;
-    ctrl = st25dv_read(ST25DV_ADDR_USER, ST25DV_REG_MB_CTRL_DYN); // read MB_CTRL_DYN to see if MB free
+
+    ctrl = st25dv_read(ST25DV_ADDR_USER, ST25DV_REG_MB_CTRL_DYN); // read MB_CTRL_DYN to see if MB free using user address
+    debug_st25_ctrl = ctrl; // save MB_CTRL_DYN value for CCS watch
+
+    if (ctrl == 0xFF) { // 0xFF is suspicious here and likely means read failed/all-ones
+        debug_st25_fail_step = 10; // suspicious MB_CTRL_DYN read using 0x53
+        return 0;
+    }
+
     if ((ctrl & ST25DV_MB_CTRL_MB_EN) == 0) { // MB must be enabled
+        debug_st25_fail_step = 6; // mailbox dynamic enable bit is not set
         return 0;
     }
+
     if (ctrl & ST25DV_MB_CTRL_HOST_PUT_MSG) { // if host put something in mailbox
+        debug_st25_fail_step = 7; // host message already pending
         return 0;
     }
+
     if (ctrl & ST25DV_MB_CTRL_RF_PUT_MSG) { // if slave put something in mailbox
+        debug_st25_fail_step = 8; // RF message already pending
         return 0;
     }
+
     return 1; // mailbox is free
 }
 
@@ -920,6 +1248,90 @@ int mailbox_write(uint8_t *message, unsigned int length) { // write message byte
     }
     return st25dv_write_sequence(ST25DV_ADDR_USER, ST25DV_MAILBOX_BASE, message, length); // write to mailbox if free. Sending whole message as one sequential write.
     }
+
+int st25dv_write_ndef_text_eeprom(uint8_t *ndef_msg, unsigned int ndef_len)
+{
+    uint8_t tlv[272]; // buffer for NDEF TLV wrapper plus NDEF message
+    unsigned int i; // loop counter
+    unsigned int total_len; // total bytes to write to EEPROM
+    unsigned int offset; // current EEPROM write offset
+    unsigned int chunk_len; // number of bytes to write in current chunk
+
+    debug_eeprom_fail_reason = 0;
+    debug_eeprom_offset = 0;
+    debug_eeprom_total_len = 0;
+    debug_eeprom_chunk_len = 0;
+
+    if (ndef_msg == 0) { // reject null pointer
+        debug_eeprom_fail_reason = 1;
+        return 0;
+    }
+
+    if (ndef_len == 0 || ndef_len > 259) { // keep message safely inside local buffer
+        debug_eeprom_fail_reason = 1;
+        return 0;
+    }
+
+    tlv[0] = 0x03; // NDEF TLV tag
+    tlv[1] = (uint8_t)ndef_len; // NDEF message length
+
+    for (i = 0; i < ndef_len; i++) { // copy NDEF record into TLV buffer
+        tlv[2 + i] = ndef_msg[i];
+    }
+
+
+    tlv[2 + ndef_len] = 0xFE; // terminator TLV
+
+    total_len = ndef_len + 3; // TLV tag + length + NDEF message + terminator
+
+    while ((total_len % 4) != 0) { // pad to 4-byte boundary so final write is not a partial chunk
+        tlv[total_len] = 0x00; // harmless padding after terminator
+        total_len++;
+    }
+
+    debug_eeprom_total_len = total_len;
+
+
+    offset = 0;
+
+    while (offset < total_len) {
+        chunk_len = total_len - offset;
+
+        if (chunk_len > 4) {
+            chunk_len = 4;
+        }
+
+        debug_eeprom_offset = offset;
+        debug_eeprom_chunk_len = chunk_len;
+
+
+        {
+            uint8_t attempt;
+            uint8_t chunk_ok = 0;
+
+            for (attempt = 0; attempt < 5; attempt++) {
+                if (st25dv_write_sequence(ST25DV_ADDR_USER, 0x0004 + offset, &tlv[offset], chunk_len)) {
+                    chunk_ok = 1;
+                    break;
+                }
+
+                i2c_bus_recover();          // recover if ST25 NACKed or bus got weird
+                __delay_cycles(200000);     // wait 200 ms before retrying same chunk
+            }
+
+            if (!chunk_ok) {
+                debug_eeprom_fail_reason = 2;
+                return 0;
+            }
+        }
+
+        __delay_cycles(100000); // 100 ms after successful EEPROM chunk write
+        offset += chunk_len;
+    }
+
+    return 1;
+}
+
 
 // SPI/MAX30002
 void spi_pins_init(void) {
@@ -1072,6 +1484,7 @@ int32_t max30002_collect_bioz_average(uint16_t sample_goal) // takes average of 
     uint32_t raw;
     uint8_t tag;
     int32_t bioz;
+    uint32_t wait_timeout = 0;
 
     int64_t sum1 = 0;
     int64_t sum2 = 0;
@@ -1086,8 +1499,18 @@ int32_t max30002_collect_bioz_average(uint16_t sample_goal) // takes average of 
 
     while (count2 < sample_goal) {
         if (!max_flag) {
+            wait_timeout++;
+
+            if (wait_timeout > 3000000) { // timeout if MAX interrupt never arrives
+                debug_max_collect_failed = 1;
+                debug_max_wait_timeout_count = wait_timeout;
+                return 0;
+            }
+
             continue;
         }
+
+        wait_timeout = 0;
 
         max_flag = 0;
         status = max30002_read_status();
@@ -1300,68 +1723,155 @@ uint16_t append_signed_x10(uint8_t *buf, uint16_t idx, uint16_t max, int32_t val
     return idx;
 }
 
-uint16_t build_bioz_ndef_text_msg(uint8_t *out, uint16_t max_len, int32_t target_raw, int32_t reference_raw) // builds NDEF text record phone can read from ST25 mailbox
+uint16_t append_url_int32(uint8_t buf[], uint16_t idx, uint16_t max, int32_t value)
 {
-    uint8_t text[150]; // buffer for text payload
-    uint16_t ti = 0; // current index into text buf
-    uint16_t i; // loop for copy text into NDEF
+    char temp[12];
+    uint8_t i = 0;
+    uint8_t j;
+
+    if (value < 0) {
+        if (idx < max) {
+            buf[idx++] = '-';
+        }
+        value = -value;
+    }
+
+    if (value == 0) {
+        if (idx < max) {
+            buf[idx++] = '0';
+        }
+        return idx;
+    }
+
+    while (value > 0 && i < sizeof(temp)) {
+        temp[i++] = (char)('0' + (value % 10));
+        value /= 10;
+    }
+
+    for (j = 0; j < i; j++) {
+        if (idx < max) {
+            buf[idx++] = temp[i - 1 - j];
+        }
+    }
+
+    return idx;
+}
+
+uint16_t append_url_x10(uint8_t buf[], uint16_t idx, uint16_t max, int32_t value_x10)
+{
+    int32_t whole;
+    int32_t frac;
+
+    if (value_x10 < 0) {
+        if (idx < max) {
+            buf[idx++] = '-';
+        }
+        value_x10 = -value_x10;
+    }
+
+    whole = value_x10 / 10;
+    frac = value_x10 % 10;
+
+    idx = append_url_int32(buf, idx, max, whole);
+
+    if (idx < max) {
+        buf[idx++] = '.';
+    }
+
+    if (idx < max) {
+        buf[idx++] = (uint8_t)('0' + frac);
+    }
+
+    return idx;
+}
+
+uint16_t build_bioz_ndef_text_msg(uint8_t out[], uint16_t max_len, int32_t target_raw, int32_t reference_raw)
+{
+    uint8_t uri[256];
+    uint16_t ui = 0;
+    uint16_t i;
     uint16_t payload_len;
-    uint16_t total_len; // NDEF payload length
-    int32_t diff; // raw diff b/w target and ref
-    int32_t percent; // percent diff, int
-    int32_t zdiff_x10; // approx ohm difference multiplied by 10
+    uint16_t total_len;
+    int32_t diff;
+    int32_t percent;
+    int32_t zdiff_x10;
 
-    diff = target_raw - reference_raw; // calc raw target vs ref diff
+    diff = target_raw - reference_raw;
 
-    if (reference_raw != 0) { // avoid div by 0 if reference failed
-        percent = (int32_t)(((int64_t)diff * 100) / reference_raw); // percent diff = 100 * diff / reference
+    if (reference_raw != 0) {
+        percent = (int32_t)(((int64_t)diff * 100) / reference_raw);
     }
     else {
-        percent = 0; // percent is 0 if reference is 0
+        percent = 0;
     }
 
-    zdiff_x10 = (int32_t)(((int64_t)diff * 900) / 15946); // approx ohm diff x10 using 1k ohm resistor calibration: raw * 90 / 15946, then x10.
+    zdiff_x10 = (int32_t)(((int64_t)diff * 900) / 15946);
 
-    ti = append_str(text, ti, sizeof(text), "BIOZ CHECK: ");
-    ti = append_int32(text, ti, sizeof(text), percent);
-    ti = append_str(text, ti, sizeof(text), "% target-vs-ref\n\n");
+    uri[ui++] = 0x04; // URI prefix code for https://
 
-    ti = append_str(text, ti, sizeof(text), "Difference: ");
-    ti = append_int32(text, ti, sizeof(text), diff);
-    ti = append_str(text, ti, sizeof(text), " raw\n");
+    ui = append_str(uri, ui, sizeof(uri), BIOZ_URL_RESULT_BASE);
+    ui = append_url_int32(uri, ui, sizeof(uri), percent);
 
-    ti = append_str(text, ti, sizeof(text), "Approx diff: ");
-    ti = append_signed_x10(text, ti, sizeof(text), zdiff_x10);
-    ti = append_str(text, ti, sizeof(text), " ohm\n\n");
+    ui = append_str(uri, ui, sizeof(uri), "&d=");
+    ui = append_url_int32(uri, ui, sizeof(uri), diff);
 
-    ti = append_str(text, ti, sizeof(text), "Target: "); // Label target raw value line
-    ti = append_uint32_no_sign(text, ti, sizeof(text), (uint32_t)target_raw); // Append target raw value without plus sign
-    ti = append_str(text, ti, sizeof(text), " raw\n"); // Add units and new line
+    ui = append_str(uri, ui, sizeof(uri), "&o=");
+    ui = append_url_x10(uri, ui, sizeof(uri), zdiff_x10);
 
-    ti = append_str(text, ti, sizeof(text), "Reference: "); // Label reference raw value line
-    ti = append_uint32_no_sign(text, ti, sizeof(text), (uint32_t)reference_raw); // Append reference raw value without plus sign
-    ti = append_str(text, ti, sizeof(text), " raw"); // Add units without final newline
+    ui = append_str(uri, ui, sizeof(uri), "&t=");
+    ui = append_url_int32(uri, ui, sizeof(uri), target_raw);
 
-    payload_len = 3 + ti; // NDEF text payload has status byte and 2 byte lang code plus text length
-    total_len = 4 + payload_len; // NDEF short record header is 4 bytes before payload
+    ui = append_str(uri, ui, sizeof(uri), "&r=");
+    ui = append_url_int32(uri, ui, sizeof(uri), reference_raw);
 
-    if (total_len > max_len || payload_len > 255) { // check output buf size and NDEF short record payload lim
-        return 0; // fail if message didn't fit
+    payload_len = ui;
+    total_len = 4 + payload_len;
+
+    if (total_len > max_len || payload_len > 255) {
+        return 0;
     }
 
-    out[0] = 0xD1; // NDEF header
-    out[1] = 0x01; // type length 1 byte
-    out[2] = (uint8_t)payload_len; // payload length
-    out[3] = 'T'; // Text type
-    out[4] = 0x02; // text status byte
-    out[5] = 'e';
-    out[6] = 'n';
+    out[0] = 0xD1; // NDEF short record, MB/ME/SR set, well-known type
+    out[1] = 0x01; // type length
+    out[2] = (uint8_t)payload_len; // URI payload length
+    out[3] = 'U'; // URI record type
 
-    for (i = 0; i < ti; i++) { // copy human readable text into final NDEF payload
-        out[7 + i] = text[i]; // final payload text starts after NDEF header, statys byte, lang code
+    for (i = 0; i < payload_len; i++) {
+        out[4 + i] = uri[i];
     }
 
-    return total_len; // return total # bytes to write to ST25DV mailbox
+    return total_len;
+}
+
+uint16_t build_ready_url_ndef(uint8_t out[], uint16_t max_len) // program back to ready mode before demo
+{
+    uint8_t uri[220];
+    uint16_t ui = 0;
+    uint16_t i;
+    uint16_t payload_len;
+    uint16_t total_len;
+
+    uri[ui++] = 0x04; // URI prefix code for https://
+
+    ui = append_str(uri, ui, sizeof(uri), BIOZ_URL_READY);
+
+    payload_len = ui;
+    total_len = 4 + payload_len;
+
+    if (total_len > max_len || payload_len > 255) {
+        return 0;
+    }
+
+    out[0] = 0xD1;
+    out[1] = 0x01;
+    out[2] = (uint8_t)payload_len;
+    out[3] = 'U';
+
+    for (i = 0; i < payload_len; i++) {
+        out[4 + i] = uri[i];
+    }
+
+    return total_len;
 }
 
 // LED STATUS INDICATORS
@@ -1383,6 +1893,16 @@ void error_handler (void) { // ensures LED is solid during error
     while(1); // LED stays permanently on with error
 }
 
+void led_double_pulse(void) // single pulse = result written, double = tag reset to ready
+{
+    LED_ON();
+    __delay_cycles(180000);
+    LED_OFF();
+    __delay_cycles(180000);
+    LED_ON();
+    __delay_cycles(180000);
+    LED_OFF();
+}
 // EXP430 buttons
 void button_s1_init(void) { // helper function to initialize buttons on EXP430FR2433 dev kit
     // S1 = P2.3
