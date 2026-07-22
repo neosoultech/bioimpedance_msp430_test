@@ -259,6 +259,20 @@ __interrupt void Port_2_ISR(void)
 // I2C_SSO_Dyn bits
 #define ST25DV_I2C_SSO_OPEN           0x01
 
+// ST25DV energy harvesting dynamic register
+2
+#define ST25DV_REG_EH_CTRL_DYN 0x2002
+3
+ 
+4
+#define ST25DV_EH_CTRL_DYN_EH_EN BIT0
+5
+#define ST25DV_EH_CTRL_DYN_EH_ON BIT1
+6
+#define ST25DV_EH_CTRL_DYN_FIELD_ON BIT2
+7
+#define ST25DV_EH_CTRL_DYN_VCC_ON BIT3
+
 // URL info
 #define BIOZ_URL_READY "apps.powerapps.com/play/acef55d5-b582-4b23-9945-7312b9c0f7d5?tenantId=d196a604-d993-4028-90df-e223d68126d2&mode=ready"
 #define BIOZ_URL_RESULT_BASE "apps.powerapps.com/play/acef55d5-b582-4b23-9945-7312b9c0f7d5?tenantId=d196a604-d993-4028-90df-e223d68126d2&mode=result&b="
