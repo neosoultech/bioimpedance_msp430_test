@@ -1,7 +1,7 @@
 ******************************************************************************
                   MSP430 Linker PC v21.6.1                     
 ******************************************************************************
->> Linked Wed Jul 22 13:34:00 2026
+>> Linked Wed Jul 22 14:34:05 2026
 
 OUTPUT FILE NAME:   <st25dv_ftm_test.out>
 ENTRY POINT SYMBOL: "_c_int00_noargs"  address: 0000d944
@@ -15,7 +15,7 @@ MEMORY CONFIGURATION
   PERIPHERALS_8BIT      00000010   000000f0  00000000  000000f0  RWIX
   PERIPHERALS_16BIT     00000100   00000100  00000000  00000100  RWIX
   INFOA                 00001800   00000200  00000000  00000200  RWIX
-  RAM                   00002000   00001000  00000106  00000efa  RWIX
+  RAM                   00002000   00001000  0000010a  00000ef6  RWIX
   FRAM                  0000c400   00003b80  000016a0  000024e0  RWIX
   JTAGSIGNATURE         0000ff80   00000004  00000004  00000000  RWIX  ffff 
   BSLSIGNATURE          0000ff84   00000004  00000004  00000000  RWIX  ffff 
@@ -168,8 +168,8 @@ section   page    origin      length       input sections
                   0000da9a    00000004     rts430x_lc_sd_eabi.lib : pre_init.c.obj (.text:_system_pre_init)
                   0000da9e    00000002                            : startup.c.obj (.text:_system_post_cinit)
 
-.data      0    00002000    00000066     UNINITIALIZED
-                  00002000    00000066     main.obj (.data)
+.data      0    00002000    0000006a     UNINITIALIZED
+                  00002000    0000006a     main.obj (.data)
 
 .stack     0    00002f60    000000a0     UNINITIALIZED
                   00002f60    00000002     rts430x_lc_sd_eabi.lib : boot.c.obj (.stack)
@@ -251,9 +251,9 @@ MODULE SUMMARY
        Module                       code   ro data   rw data
        ------                       ----   -------   -------
     .\
-       main.obj                     3238   258       102    
+       main.obj                     3238   258       106    
     +--+----------------------------+------+---------+---------+
-       Total:                       3238   258       102    
+       Total:                       3238   258       106    
                                                             
     C:\ti\ccs1281\ccs\tools\compiler\ti-cgt-msp430_21.6.1.LTS\lib\rts430x_lc_sd_eabi.lib
        div64u.c.obj                 846    0         0      
@@ -299,13 +299,13 @@ MODULE SUMMARY
        Stack:                       0      0         160    
        Linker Generated:            0      34        0      
     +--+----------------------------+------+---------+---------+
-       Grand Total:                 5502   328       262    
+       Grand Total:                 5502   328       266    
 
 
 LINKER GENERATED COPY TABLES
 
 __TI_cinit_table @ 0000c41a records: 1, size/record: 8, table size: 8
-	.data: load addr=0000c400, load size=00000012 bytes, run addr=00002000, run size=00000066 bytes, compression=lzss
+	.data: load addr=0000c400, load size=00000012 bytes, run addr=00002000, run size=0000006a bytes, compression=lzss
 
 
 LINKER GENERATED HANDLER TABLE
@@ -906,6 +906,10 @@ ffffffff  __c_args__
 00002010  debug_print_count                      
 0000204a  debug_st25_ctrl                        
 00002050  debug_st25_ctrl_after_write            
+00002063  debug_st25_eh_ctrl_after               
+00002062  debug_st25_eh_ctrl_before              
+00002065  debug_st25_eh_mode_after               
+00002064  debug_st25_eh_mode_before              
 0000204d  debug_st25_fail_step                   
 00002052  debug_st25_mailbox_test_addr           
 00002051  debug_st25_mb_len_after_write          
@@ -937,9 +941,9 @@ ffffffff  __c_args__
 0000d9e2  max30002_reset                         
 0000d994  max30002_synch                         
 0000d846  max30002_write_reg                     
-00002064  max_flag                               
+00002068  max_flag                               
 0000d8c0  max_int_init                           
-00002062  phone_flag                             
+00002066  phone_flag                             
 00002004  sample_count                           
 0000da3c  spi_init                               
 0000d9ae  spi_pins_init                          
@@ -1462,8 +1466,12 @@ address   name
 0000205b  demo_result_pending                    
 0000205c  debug_max_collect_failed               
 0000205e  debug_max_wait_timeout_count           
-00002062  phone_flag                             
-00002064  max_flag                               
+00002062  debug_st25_eh_ctrl_before              
+00002063  debug_st25_eh_ctrl_after               
+00002064  debug_st25_eh_mode_before              
+00002065  debug_st25_eh_mode_after               
+00002066  phone_flag                             
+00002068  max_flag                               
 00002f60  _stack                                 
 00003000  __STACK_END                            
 0000c412  __TI_Handler_Table_Base                
@@ -1582,4 +1590,4 @@ ffffffff  __TI_prof_data_size
 ffffffff  __TI_prof_data_start                   
 ffffffff  __c_args__                             
 
-[628 symbols]
+[632 symbols]

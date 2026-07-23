@@ -107,6 +107,10 @@ volatile uint8_t debug_eeprom_fail_reason = 0; // 1=len/null fail, 2=chunk write
 volatile uint8_t demo_result_pending = 0; // 0 = next tap measures/writes result, 1 = next tap resets tag to rea
 volatile uint8_t debug_max_collect_failed = 0;
 volatile uint32_t debug_max_wait_timeout_count = 0;
+volatile uint8_t debug_st25_eh_ctrl_before = 0;
+volatile uint8_t debug_st25_eh_ctrl_after = 0;
+volatile uint8_t debug_st25_eh_mode_before = 0;
+volatile uint8_t debug_st25_eh_mode_after = 0;
 
 
 volatile int phone_flag = 0;
@@ -260,21 +264,18 @@ __interrupt void Port_2_ISR(void)
 #define ST25DV_I2C_SSO_OPEN           0x01
 
 // ST25DV energy harvesting dynamic register
-2
+
 #define ST25DV_REG_EH_CTRL_DYN 0x2002
-3
- 
-4
 #define ST25DV_EH_CTRL_DYN_EH_EN BIT0
-5
 #define ST25DV_EH_CTRL_DYN_EH_ON BIT1
-6
 #define ST25DV_EH_CTRL_DYN_FIELD_ON BIT2
-7
 #define ST25DV_EH_CTRL_DYN_VCC_ON BIT3
+#define ST25DV_REG_EH_MODE             0x0002  // system area register
+#define ST25DV_EH_MODE_ENABLE_AUTO     0x00    // bit0 cleared = auto EH enabled
+#define ST25DV_EH_MODE_DISABLE_AUTO    BIT0    // bit0 set = auto EH disabled
 
 // URL info
-#define BIOZ_URL_READY "apps.powerapps.com/play/acef55d5-b582-4b23-9945-7312b9c0f7d5?tenantId=d196a604-d993-4028-90df-e223d68126d2&mode=ready"
+#define BIOZ_URL_SCANNING "apps.powerapps.com/play/acef55d5-b582-4b23-9945-7312b9c0f7d5?tenantId=d196a604-d993-4028-90df-e223d68126d2&mode=scanning"
 #define BIOZ_URL_RESULT_BASE "apps.powerapps.com/play/acef55d5-b582-4b23-9945-7312b9c0f7d5?tenantId=d196a604-d993-4028-90df-e223d68126d2&mode=result&b="
 
                                         //
@@ -320,6 +321,7 @@ __interrupt void Port_2_ISR(void)
 
                         // FUNCTION DECLARATIONS
 int st25dv_write(uint8_t slave, uint16_t mem_addr, uint8_t data);
+int st25dv_enable_energy_harvesting_dynamic(void);
 void i2c_init();
 void i2c_pins_init();
 void i2c_bus_recover(void);
@@ -339,6 +341,7 @@ int st25dv_present_i2c_password(void);
 int st25dv_i2c_session_is_open(void);
 int st25dv_write_ndef_text_eeprom(uint8_t *ndef_msg, unsigned int ndef_len); // Writes a complete NDEF message into normal ST25 EEPROM tag memory
 int st25dv_mailbox_is_free(void);
+int st25dv_enable_energy_harvesting_static(void);
 int wait_tx_ready_timeout(void);
 int st25dv_write_sequence(uint8_t slave, uint16_t mem_addr, uint8_t *data, unsigned int length);
 void max_int_init(void);
@@ -1157,6 +1160,100 @@ uint8_t st25dv_read(uint8_t slave, uint16_t mem_addr) { // MCU gets address and 
         return data;
     }
 
+int st25dv_enable_energy_harvesting_dynamic(void)
+{
+    uint8_t eh_ctrl;
+
+    debug_st25_fail_step = 90; // starting EH dynamic enable
+
+    eh_ctrl = st25dv_read(ST25DV_ADDR_USER, ST25DV_REG_EH_CTRL_DYN);
+    debug_st25_eh_ctrl_before = eh_ctrl;
+
+    if (eh_ctrl == 0xFF) {
+        debug_st25_fail_step = 91; // EH_CTRL_DYN read failed
+        return 0;
+    }
+
+    eh_ctrl |= ST25DV_EH_CTRL_DYN_EH_EN;
+
+    if (!st25dv_write(ST25DV_ADDR_USER, ST25DV_REG_EH_CTRL_DYN, eh_ctrl)) {
+        debug_st25_fail_step = 92; // EH_CTRL_DYN write failed
+        return 0;
+    }
+
+    __delay_cycles(10000);
+
+    eh_ctrl = st25dv_read(ST25DV_ADDR_USER, ST25DV_REG_EH_CTRL_DYN);
+    debug_st25_eh_ctrl_after = eh_ctrl;
+
+    if (eh_ctrl == 0xFF) {
+        debug_st25_fail_step = 93; // EH_CTRL_DYN readback failed
+        return 0;
+    }
+
+    if ((eh_ctrl & ST25DV_EH_CTRL_DYN_EH_EN) == 0) {
+        debug_st25_fail_step = 94; // EH_EN bit did not stay set
+        return 0;
+    }
+
+    debug_st25_fail_step = 0;
+    return 1;
+}
+int st25dv_enable_energy_harvesting_static(void)
+{
+    uint8_t eh_mode;
+
+    debug_st25_fail_step = 95; // starting static EH enable
+
+    if (!st25dv_present_i2c_password()) {
+        debug_st25_fail_step = 96; // failed to present I2C password
+        return 0;
+    }
+
+    if (!st25dv_i2c_session_is_open()) {
+        debug_st25_fail_step = 97; // I2C security session did not open
+        return 0;
+    }
+
+    eh_mode = st25dv_read(ST25DV_ADDR_SYSTEM, ST25DV_REG_EH_MODE);
+    debug_st25_eh_mode_before = eh_mode;
+
+    if (eh_mode == 0xFF) {
+        debug_st25_fail_step = 98; // EH_MODE read failed
+        return 0;
+    }
+
+    /*
+     * Static EH_MODE bit0 is reversed:
+     * bit0 = 0 means automatic energy harvesting enabled.
+     * bit0 = 1 means automatic energy harvesting disabled.
+     */
+    eh_mode &= ~ST25DV_EH_MODE_DISABLE_AUTO;
+
+    if (!st25dv_write(ST25DV_ADDR_SYSTEM, ST25DV_REG_EH_MODE, eh_mode)) {
+        debug_st25_fail_step = 99; // EH_MODE write failed
+        return 0;
+    }
+
+    __delay_cycles(20000); // allow system EEPROM/config write time
+
+    eh_mode = st25dv_read(ST25DV_ADDR_SYSTEM, ST25DV_REG_EH_MODE);
+    debug_st25_eh_mode_after = eh_mode;
+
+    if (eh_mode == 0xFF) {
+        debug_st25_fail_step = 100; // EH_MODE readback failed
+        return 0;
+    }
+
+    if (eh_mode & ST25DV_EH_MODE_DISABLE_AUTO) {
+        debug_st25_fail_step = 101; // EH_MODE bit0 still set, auto EH not enabled
+        return 0;
+    }
+
+    debug_st25_fail_step = 0;
+    return 1;
+}
+
 int enable_mailbox (void) { // helper function to enable FTM mailbox
      uint8_t mb_mode;
 
@@ -1867,7 +1964,7 @@ uint16_t build_ready_url_ndef(uint8_t out[], uint16_t max_len) // program back t
 
     uri[ui++] = 0x04; // URI prefix code for https://
 
-    ui = append_str(uri, ui, sizeof(uri), BIOZ_URL_READY);
+    ui = append_str(uri, ui, sizeof(uri), BIOZ_URL_SCANNING);
 
     payload_len = ui;
     total_len = 4 + payload_len;
