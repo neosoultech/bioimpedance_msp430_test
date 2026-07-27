@@ -1,10 +1,10 @@
 ******************************************************************************
                   MSP430 Linker PC v21.6.1                     
 ******************************************************************************
->> Linked Thu Jul 23 13:46:30 2026
+>> Linked Mon Jul 27 11:51:58 2026
 
 OUTPUT FILE NAME:   <st25dv_ftm_test.out>
-ENTRY POINT SYMBOL: "_c_int00_noargs"  address: 0000d948
+ENTRY POINT SYMBOL: "_c_int00_noargs"  address: 0000d9a2
 
 
 MEMORY CONFIGURATION
@@ -15,8 +15,8 @@ MEMORY CONFIGURATION
   PERIPHERALS_8BIT      00000010   000000f0  00000000  000000f0  RWIX
   PERIPHERALS_16BIT     00000100   00000100  00000000  00000100  RWIX
   INFOA                 00001800   00000200  00000000  00000200  RWIX
-  RAM                   00002000   00001000  0000010a  00000ef6  RWIX
-  FRAM                  0000c400   00003b80  000016a4  000024dc  RWIX
+  RAM                   00002000   00001000  00000106  00000efa  RWIX
+  FRAM                  0000c400   00003b80  000016fe  00002482  RWIX
   JTAGSIGNATURE         0000ff80   00000004  00000004  00000000  RWIX  ffff 
   BSLSIGNATURE          0000ff84   00000004  00000004  00000000  RWIX  ffff 
   INT00                 0000ff88   00000002  00000000  00000002  RWIX
@@ -107,69 +107,70 @@ section   page    origin      length       input sections
 .mspabi.extab 
 *          0    0000c422    00000000     UNINITIALIZED
 
-.const     0    0000c422    00000104     
-                  0000c422    00000104     main.obj (.const:.string)
+.const     0    0000c422    0000012e     
+                  0000c422    0000012e     main.obj (.const:.string)
 
-.text      0    0000c526    0000157e     
-                  0000c526    0000034e     rts430x_lc_sd_eabi.lib : div64u.c.obj (.text:__mspabi_divull)
-                  0000c874    0000025a     main.obj (.text:main)
-                  0000cace    000001e0     main.obj (.text:max30002_collect_bioz_average)
-                  0000ccae    000001d0     main.obj (.text:build_bioz_ndef_text_msg)
-                  0000ce7e    0000013c     rts430x_lc_sd_eabi.lib : div64s.c.obj (.text:__mspabi_divlli)
-                  0000cfba    000000ee                            : copy_decompress_lzss.c.obj (.text:decompress:lzss:__TI_decompress_lzss)
-                  0000d0a8    000000ea     main.obj (.text:st25dv_write_ndef_text_eeprom)
-                  0000d192    000000c0     main.obj (.text:append_url_int32)
-                  0000d252    00000080     main.obj (.text:append_url_x10)
-                  0000d2d2    00000070     main.obj (.text:max30002_configure_bioz_once)
-                  0000d342    0000006a     rts430x_lc_sd_eabi.lib : autoinit.c.obj (.text:__TI_auto_init_nobinit_nopinit_hold_wdt:__TI_auto_init_nobinit_nopinit_hold_wdt)
-                  0000d3ac    0000006a     main.obj (.text:st25dv_write_sequence)
-                  0000d416    00000062     main.obj (.text:build_ready_url_ndef)
-                  0000d478    0000005c     rts430x_lc_sd_eabi.lib : mult64_f5hw.asm.obj (.text:__mpyll)
-                  0000d4d4    00000058                            : div32u.asm.obj (.text)
-                  0000d52c    00000046     main.obj (.text:max30002_read_reg)
-                  0000d572    00000042     main.obj (.text:wait_tx_ready_timeout)
-                  0000d5b4    00000040     rts430x_lc_sd_eabi.lib : cpy_util.asm.obj (.text:__memcpy_far)
-                  0000d5f4    00000040                            : asr64.c.obj (.text:__mspabi_srall)
-                  0000d634    00000040                            : div32s.asm.obj (.text)
-                  0000d674    0000003e                            : lsl32.asm.obj (.text:l_lsl_const)
-                  0000d6b2    0000003e                            : lsr32.asm.obj (.text:l_lsr_const)
-                  0000d6f0    0000003c                            : copy_decompress_none.c.obj (.text:decompress:none:__TI_decompress_none)
-                  0000d72c    0000003c     main.obj (.text:i2c_bus_recover)
-                  0000d768    0000003c     main.obj (.text:led_double_pulse)
-                  0000d7a4    0000003a     rts430x_lc_sd_eabi.lib : lsl64.c.obj (.text:__mspabi_sllll)
-                  0000d7de    0000003a                            : lsr64.c.obj (.text:__mspabi_srlll)
-                  0000d818    00000032     main.obj (.text:bioz_prepare_selected_path)
-                  0000d84a    00000030     main.obj (.text:max30002_write_reg)
-                  0000d87a    00000026     main.obj (.text:led_pulse_transmission)
-                  0000d8a0    00000024     main.obj (.text:gpo_init)
-                  0000d8c4    00000024     main.obj (.text:max_int_init)
-                  0000d8e8    00000022     main.obj (.text:bioz_parse)
-                  0000d90a    00000020     main.obj (.text:check_nack)
-                  0000d92a    0000001e     main.obj (.text:_isr:Port_2_ISR)
-                  0000d948    0000001c     rts430x_lc_sd_eabi.lib : boot.c.obj (.text:_isr:_c_int00_noargs)
-                  0000d964    0000001a     main.obj (.text:append_str)
-                  0000d97e    0000001a     main.obj (.text:max30002_fifo_reset)
-                  0000d998    0000001a     main.obj (.text:max30002_synch)
-                  0000d9b2    0000001a     main.obj (.text:spi_pins_init)
-                  0000d9cc    0000001a     main.obj (.text:spi_transfer)
-                  0000d9e6    00000018     main.obj (.text:max30002_reset)
-                  0000d9fe    00000016     main.obj (.text:i2c_init)
-                  0000da14    00000016     main.obj (.text:i2c_send_and_check)
-                  0000da2a    00000016     rts430x_lc_sd_eabi.lib : llabs.c.obj (.text:llabs)
-                  0000da40    00000016     main.obj (.text:spi_init)
-                  0000da56    00000010     rts430x_lc_sd_eabi.lib : lsr32.asm.obj (.text:l_lsr)
-                  0000da66    0000000e     main.obj (.text:i2c_pins_init)
-                  0000da74    00000008     rts430x_lc_sd_eabi.lib : isr_trap.asm.obj (.text:_isr:__TI_ISR_TRAP)
-                  0000da7c    00000008     main.obj (.text:error_handler)
-                  0000da84    00000008     main.obj (.text:max30002_read_fifo)
-                  0000da8c    00000006     rts430x_lc_sd_eabi.lib : exit.c.obj (.text:abort)
-                  0000da92    00000006     main.obj (.text:led_idle)
-                  0000da98    00000006     main.obj (.text:max30002_read_status)
-                  0000da9e    00000004     rts430x_lc_sd_eabi.lib : pre_init.c.obj (.text:_system_pre_init)
-                  0000daa2    00000002                            : startup.c.obj (.text:_system_post_cinit)
+.text      0    0000c550    000015ae     
+                  0000c550    0000034e     rts430x_lc_sd_eabi.lib : div64u.c.obj (.text:__mspabi_divull)
+                  0000c89e    0000025e     main.obj (.text:main)
+                  0000cafc    000001e0     main.obj (.text:max30002_collect_bioz_average)
+                  0000ccdc    000001d0     main.obj (.text:build_bioz_ndef_text_msg)
+                  0000ceac    0000013c     rts430x_lc_sd_eabi.lib : div64s.c.obj (.text:__mspabi_divlli)
+                  0000cfe8    000000ee                            : copy_decompress_lzss.c.obj (.text:decompress:lzss:__TI_decompress_lzss)
+                  0000d0d6    000000ea     main.obj (.text:st25dv_write_ndef_text_eeprom)
+                  0000d1c0    000000c0     main.obj (.text:append_url_int32)
+                  0000d280    00000080     main.obj (.text:append_url_x10)
+                  0000d300    00000070     main.obj (.text:max30002_configure_bioz_once)
+                  0000d370    0000006a     rts430x_lc_sd_eabi.lib : autoinit.c.obj (.text:__TI_auto_init_nobinit_nopinit_hold_wdt:__TI_auto_init_nobinit_nopinit_hold_wdt)
+                  0000d3da    0000006a     main.obj (.text:st25dv_write_sequence)
+                  0000d444    00000062     main.obj (.text:build_scanning_url_ndef)
+                  0000d4a6    0000005c     rts430x_lc_sd_eabi.lib : mult64_f5hw.asm.obj (.text:__mpyll)
+                  0000d502    00000058                            : div32u.asm.obj (.text)
+                  0000d55a    00000046     main.obj (.text:max30002_read_reg)
+                  0000d5a0    00000042     main.obj (.text:wait_tx_ready_timeout)
+                  0000d5e2    00000040     rts430x_lc_sd_eabi.lib : cpy_util.asm.obj (.text:__memcpy_far)
+                  0000d622    00000040                            : asr64.c.obj (.text:__mspabi_srall)
+                  0000d662    00000040                            : div32s.asm.obj (.text)
+                  0000d6a2    0000003e                            : lsl32.asm.obj (.text:l_lsl_const)
+                  0000d6e0    0000003e                            : lsr32.asm.obj (.text:l_lsr_const)
+                  0000d71e    0000003c                            : copy_decompress_none.c.obj (.text:decompress:none:__TI_decompress_none)
+                  0000d75a    0000003c     main.obj (.text:i2c_bus_recover)
+                  0000d796    0000003c     main.obj (.text:led_double_pulse)
+                  0000d7d2    0000003a     rts430x_lc_sd_eabi.lib : lsl64.c.obj (.text:__mspabi_sllll)
+                  0000d80c    0000003a                            : lsr64.c.obj (.text:__mspabi_srlll)
+                  0000d846    00000032     main.obj (.text:bioz_prepare_selected_path)
+                  0000d878    00000030     main.obj (.text:max30002_write_reg)
+                  0000d8a8    0000002c     main.obj (.text:bioz_mux_init)
+                  0000d8d4    00000026     main.obj (.text:led_pulse_transmission)
+                  0000d8fa    00000024     main.obj (.text:gpo_init)
+                  0000d91e    00000024     main.obj (.text:max_int_init)
+                  0000d942    00000022     main.obj (.text:bioz_parse)
+                  0000d964    00000020     main.obj (.text:check_nack)
+                  0000d984    0000001e     main.obj (.text:_isr:Port_2_ISR)
+                  0000d9a2    0000001c     rts430x_lc_sd_eabi.lib : boot.c.obj (.text:_isr:_c_int00_noargs)
+                  0000d9be    0000001a     main.obj (.text:append_str)
+                  0000d9d8    0000001a     main.obj (.text:max30002_fifo_reset)
+                  0000d9f2    0000001a     main.obj (.text:max30002_synch)
+                  0000da0c    0000001a     main.obj (.text:spi_pins_init)
+                  0000da26    0000001a     main.obj (.text:spi_transfer)
+                  0000da40    00000018     main.obj (.text:max30002_reset)
+                  0000da58    00000016     main.obj (.text:i2c_init)
+                  0000da6e    00000016     main.obj (.text:i2c_send_and_check)
+                  0000da84    00000016     rts430x_lc_sd_eabi.lib : llabs.c.obj (.text:llabs)
+                  0000da9a    00000016     main.obj (.text:spi_init)
+                  0000dab0    00000010     rts430x_lc_sd_eabi.lib : lsr32.asm.obj (.text:l_lsr)
+                  0000dac0    0000000e     main.obj (.text:i2c_pins_init)
+                  0000dace    00000008     rts430x_lc_sd_eabi.lib : isr_trap.asm.obj (.text:_isr:__TI_ISR_TRAP)
+                  0000dad6    00000008     main.obj (.text:error_handler)
+                  0000dade    00000008     main.obj (.text:max30002_read_fifo)
+                  0000dae6    00000006     rts430x_lc_sd_eabi.lib : exit.c.obj (.text:abort)
+                  0000daec    00000006     main.obj (.text:led_idle)
+                  0000daf2    00000006     main.obj (.text:max30002_read_status)
+                  0000daf8    00000004     rts430x_lc_sd_eabi.lib : pre_init.c.obj (.text:_system_pre_init)
+                  0000dafc    00000002                            : startup.c.obj (.text:_system_post_cinit)
 
-.data      0    00002000    0000006a     UNINITIALIZED
-                  00002000    0000006a     main.obj (.data)
+.data      0    00002000    00000066     UNINITIALIZED
+                  00002000    00000066     main.obj (.data)
 
 .stack     0    00002f60    000000a0     UNINITIALIZED
                   00002f60    00000002     rts430x_lc_sd_eabi.lib : boot.c.obj (.stack)
@@ -251,9 +252,9 @@ MODULE SUMMARY
        Module                       code   ro data   rw data
        ------                       ----   -------   -------
     .\
-       main.obj                     3238   262       106    
+       main.obj                     3286   304       102    
     +--+----------------------------+------+---------+---------+
-       Total:                       3238   262       106    
+       Total:                       3286   304       102    
                                                             
     C:\ti\ccs1281\ccs\tools\compiler\ti-cgt-msp430_21.6.1.LTS\lib\rts430x_lc_sd_eabi.lib
        div64u.c.obj                 846    0         0      
@@ -299,13 +300,13 @@ MODULE SUMMARY
        Stack:                       0      0         160    
        Linker Generated:            0      34        0      
     +--+----------------------------+------+---------+---------+
-       Grand Total:                 5502   332       266    
+       Grand Total:                 5550   374       262    
 
 
 LINKER GENERATED COPY TABLES
 
 __TI_cinit_table @ 0000c41a records: 1, size/record: 8, table size: 8
-	.data: load addr=0000c400, load size=00000012 bytes, run addr=00002000, run size=0000006a bytes, compression=lzss
+	.data: load addr=0000c400, load size=00000012 bytes, run addr=00002000, run size=00000066 bytes, compression=lzss
 
 
 LINKER GENERATED HANDLER TABLE
@@ -397,7 +398,7 @@ address   name
 00000672  BAKMEM9                                
 00000673  BAKMEM9_H                              
 00000672  BAKMEM9_L                              
-0000da8c  C$$EXIT                                
+0000dae6  C$$EXIT                                
 000001c0  CRCDI                                  
 000001c2  CRCDIRB                                
 000001c3  CRCDIRB_H                              
@@ -559,7 +560,7 @@ address   name
 0000012a  PMMIFG                                 
 0000012b  PMMIFG_H                               
 0000012a  PMMIFG_L                               
-0000d92a  Port_2_ISR                             
+0000d984  Port_2_ISR                             
 000004e4  RES0                                   
 000004e5  RES0_H                                 
 000004e4  RES0_L                                 
@@ -799,10 +800,10 @@ address   name
 0000c422  __TI_CINIT_Warm                        
 0000c412  __TI_Handler_Table_Base                
 0000c41a  __TI_Handler_Table_Limit               
-0000da74  __TI_ISR_TRAP                          
-0000d342  __TI_auto_init_nobinit_nopinit_hold_wdt
-0000cfba  __TI_decompress_lzss                   
-0000d6f0  __TI_decompress_none                   
+0000dace  __TI_ISR_TRAP                          
+0000d370  __TI_auto_init_nobinit_nopinit_hold_wdt
+0000cfe8  __TI_decompress_lzss                   
+0000d71e  __TI_decompress_none                   
 0000ffda  __TI_int41                             
 0000ffdc  __TI_int42                             
 0000ffde  __TI_int43                             
@@ -825,64 +826,65 @@ ffffffff  __TI_pprof_out_hndl
 ffffffff  __TI_prof_data_size                    
 ffffffff  __TI_prof_data_start                   
 ffffffff  __c_args__                             
-0000d5b4  __memcpy_far                           
-0000d634  __mspabi_divli                         
-0000ce7e  __mspabi_divlli                        
-0000d4d4  __mspabi_divul                         
-0000c526  __mspabi_divull                        
-0000d478  __mspabi_mpyll_f5hw                    
-0000d634  __mspabi_remli                         
-0000d4d4  __mspabi_remul                         
-0000d6ac  __mspabi_slll_1                        
-0000d688  __mspabi_slll_10                       
-0000d684  __mspabi_slll_11                       
-0000d680  __mspabi_slll_12                       
-0000d67c  __mspabi_slll_13                       
-0000d678  __mspabi_slll_14                       
-0000d674  __mspabi_slll_15                       
-0000d6a8  __mspabi_slll_2                        
-0000d6a4  __mspabi_slll_3                        
-0000d6a0  __mspabi_slll_4                        
-0000d69c  __mspabi_slll_5                        
-0000d698  __mspabi_slll_6                        
-0000d694  __mspabi_slll_7                        
-0000d690  __mspabi_slll_8                        
-0000d68c  __mspabi_slll_9                        
-0000d7a4  __mspabi_sllll                         
-0000d5f4  __mspabi_srall                         
-0000da56  __mspabi_srll                          
-0000d6ea  __mspabi_srll_1                        
-0000d6c6  __mspabi_srll_10                       
-0000d6c2  __mspabi_srll_11                       
-0000d6be  __mspabi_srll_12                       
-0000d6ba  __mspabi_srll_13                       
-0000d6b6  __mspabi_srll_14                       
-0000d6b2  __mspabi_srll_15                       
-0000d6e6  __mspabi_srll_2                        
-0000d6e2  __mspabi_srll_3                        
-0000d6de  __mspabi_srll_4                        
-0000d6da  __mspabi_srll_5                        
-0000d6d6  __mspabi_srll_6                        
-0000d6d2  __mspabi_srll_7                        
-0000d6ce  __mspabi_srll_8                        
-0000d6ca  __mspabi_srll_9                        
-0000d7de  __mspabi_srlll                         
-0000d948  _c_int00_noargs                        
+0000d5e2  __memcpy_far                           
+0000d662  __mspabi_divli                         
+0000ceac  __mspabi_divlli                        
+0000d502  __mspabi_divul                         
+0000c550  __mspabi_divull                        
+0000d4a6  __mspabi_mpyll_f5hw                    
+0000d662  __mspabi_remli                         
+0000d502  __mspabi_remul                         
+0000d6da  __mspabi_slll_1                        
+0000d6b6  __mspabi_slll_10                       
+0000d6b2  __mspabi_slll_11                       
+0000d6ae  __mspabi_slll_12                       
+0000d6aa  __mspabi_slll_13                       
+0000d6a6  __mspabi_slll_14                       
+0000d6a2  __mspabi_slll_15                       
+0000d6d6  __mspabi_slll_2                        
+0000d6d2  __mspabi_slll_3                        
+0000d6ce  __mspabi_slll_4                        
+0000d6ca  __mspabi_slll_5                        
+0000d6c6  __mspabi_slll_6                        
+0000d6c2  __mspabi_slll_7                        
+0000d6be  __mspabi_slll_8                        
+0000d6ba  __mspabi_slll_9                        
+0000d7d2  __mspabi_sllll                         
+0000d622  __mspabi_srall                         
+0000dab0  __mspabi_srll                          
+0000d718  __mspabi_srll_1                        
+0000d6f4  __mspabi_srll_10                       
+0000d6f0  __mspabi_srll_11                       
+0000d6ec  __mspabi_srll_12                       
+0000d6e8  __mspabi_srll_13                       
+0000d6e4  __mspabi_srll_14                       
+0000d6e0  __mspabi_srll_15                       
+0000d714  __mspabi_srll_2                        
+0000d710  __mspabi_srll_3                        
+0000d70c  __mspabi_srll_4                        
+0000d708  __mspabi_srll_5                        
+0000d704  __mspabi_srll_6                        
+0000d700  __mspabi_srll_7                        
+0000d6fc  __mspabi_srll_8                        
+0000d6f8  __mspabi_srll_9                        
+0000d80c  __mspabi_srlll                         
+0000d9a2  _c_int00_noargs                        
 0000fffe  _reset_vector                          
 00002f60  _stack                                 
-0000daa2  _system_post_cinit                     
-0000da9e  _system_pre_init                       
-0000da8c  abort                                  
-0000d964  append_str                             
-0000d192  append_url_int32                       
-0000d252  append_url_x10                         
+0000dafc  _system_post_cinit                     
+0000daf8  _system_pre_init                       
+0000dae6  abort                                  
+0000d9be  append_str                             
+0000d1c0  append_url_int32                       
+0000d280  append_url_x10                         
 0000200e  bioz_log_done                          
 0000200c  bioz_log_i                             
-0000d8e8  bioz_parse                             
-0000d818  bioz_prepare_selected_path             
-0000ccae  build_bioz_ndef_text_msg               
-0000d416  build_ready_url_ndef                   
-0000d90a  check_nack                             
+0000d8a8  bioz_mux_init                          
+0000d942  bioz_parse                             
+0000d846  bioz_prepare_selected_path             
+0000ccdc  build_bioz_ndef_text_msg               
+0000d444  build_scanning_url_ndef                
+0000d964  check_nack                             
 00002014  debug_baseline_bioz                    
 00002000  debug_bioz                             
 00002018  debug_bioz_diff                        
@@ -890,67 +892,63 @@ ffffffff  __c_args__
 00002032  debug_bmux_start                       
 0000203c  debug_bovf_count                       
 00002024  debug_config_pass                      
-0000204f  debug_ctrl_data                        
-0000204e  debug_ctrl_user                        
-00002058  debug_eeprom_chunk_len                 
-0000205a  debug_eeprom_fail_reason               
-00002054  debug_eeprom_offset                    
-00002056  debug_eeprom_total_len                 
+0000204e  debug_ctrl_data                        
+0000204d  debug_ctrl_user                        
+00002054  debug_eeprom_chunk_len                 
+00002056  debug_eeprom_fail_reason               
+00002050  debug_eeprom_offset                    
+00002052  debug_eeprom_total_len                 
 00002020  debug_en_int_read                      
 00002026  debug_en_int_start                     
 0000202e  debug_gen_start                        
 0000201c  debug_info                             
-0000205c  debug_max_collect_failed               
-0000205e  debug_max_wait_timeout_count           
+00002058  debug_max_collect_failed               
+0000205a  debug_max_wait_timeout_count           
 0000202a  debug_mngr_int_start                   
 00002010  debug_print_count                      
 0000204a  debug_st25_ctrl                        
-00002050  debug_st25_ctrl_after_write            
-00002063  debug_st25_eh_ctrl_after               
-00002062  debug_st25_eh_ctrl_before              
-00002065  debug_st25_eh_mode_after               
-00002064  debug_st25_eh_mode_before              
-0000204d  debug_st25_fail_step                   
-00002052  debug_st25_mailbox_test_addr           
-00002051  debug_st25_mb_len_after_write          
-0000204c  debug_st25_mb_mode                     
+0000205f  debug_st25_eh_ctrl_after               
+0000205e  debug_st25_eh_ctrl_before              
+00002061  debug_st25_eh_mode_after               
+00002060  debug_st25_eh_mode_before              
+0000204c  debug_st25_fail_step                   
 0000204b  debug_st25_sso                         
 0000203a  debug_start_pass                       
 00002008  debug_target_bioz                      
 00002046  demo_fake_reference                    
 00002042  demo_fake_target                       
 00002040  demo_msg_len                           
-0000205b  demo_result_pending                    
-0000da7c  error_handler                          
-0000d8a0  gpo_init                               
-0000d72c  i2c_bus_recover                        
-0000d9fe  i2c_init                               
-0000da66  i2c_pins_init                          
-0000da14  i2c_send_and_check                     
-0000d768  led_double_pulse                       
-0000da92  led_idle                               
-0000d87a  led_pulse_transmission                 
-0000da2a  llabs                                  
-0000c874  main                                   
-0000cace  max30002_collect_bioz_average          
-0000d2d2  max30002_configure_bioz_once           
-0000d97e  max30002_fifo_reset                    
-0000da84  max30002_read_fifo                     
-0000d52c  max30002_read_reg                      
-0000da98  max30002_read_status                   
-0000d9e6  max30002_reset                         
-0000d998  max30002_synch                         
-0000d84a  max30002_write_reg                     
-00002068  max_flag                               
-0000d8c4  max_int_init                           
-00002066  phone_flag                             
+00002057  demo_result_pending                    
+0000dad6  error_handler                          
+0000d8fa  gpo_init                               
+0000d75a  i2c_bus_recover                        
+0000da58  i2c_init                               
+0000dac0  i2c_pins_init                          
+0000da6e  i2c_send_and_check                     
+0000d796  led_double_pulse                       
+0000daec  led_idle                               
+0000d8d4  led_pulse_transmission                 
+0000da84  llabs                                  
+0000c89e  main                                   
+0000cafc  max30002_collect_bioz_average          
+0000d300  max30002_configure_bioz_once           
+0000d9d8  max30002_fifo_reset                    
+0000dade  max30002_read_fifo                     
+0000d55a  max30002_read_reg                      
+0000daf2  max30002_read_status                   
+0000da40  max30002_reset                         
+0000d9f2  max30002_synch                         
+0000d878  max30002_write_reg                     
+00002064  max_flag                               
+0000d91e  max_int_init                           
+00002062  phone_flag                             
 00002004  sample_count                           
-0000da40  spi_init                               
-0000d9b2  spi_pins_init                          
-0000d9cc  spi_transfer                           
-0000d0a8  st25dv_write_ndef_text_eeprom          
-0000d3ac  st25dv_write_sequence                  
-0000d572  wait_tx_ready_timeout                  
+0000da9a  spi_init                               
+0000da0c  spi_pins_init                          
+0000da26  spi_transfer                           
+0000d0d6  st25dv_write_ndef_text_eeprom          
+0000d3da  st25dv_write_sequence                  
+0000d5a0  wait_tx_ready_timeout                  
 
 
 GLOBAL SYMBOLS: SORTED BY Symbol Address 
@@ -1452,26 +1450,22 @@ address   name
 00002046  demo_fake_reference                    
 0000204a  debug_st25_ctrl                        
 0000204b  debug_st25_sso                         
-0000204c  debug_st25_mb_mode                     
-0000204d  debug_st25_fail_step                   
-0000204e  debug_ctrl_user                        
-0000204f  debug_ctrl_data                        
-00002050  debug_st25_ctrl_after_write            
-00002051  debug_st25_mb_len_after_write          
-00002052  debug_st25_mailbox_test_addr           
-00002054  debug_eeprom_offset                    
-00002056  debug_eeprom_total_len                 
-00002058  debug_eeprom_chunk_len                 
-0000205a  debug_eeprom_fail_reason               
-0000205b  demo_result_pending                    
-0000205c  debug_max_collect_failed               
-0000205e  debug_max_wait_timeout_count           
-00002062  debug_st25_eh_ctrl_before              
-00002063  debug_st25_eh_ctrl_after               
-00002064  debug_st25_eh_mode_before              
-00002065  debug_st25_eh_mode_after               
-00002066  phone_flag                             
-00002068  max_flag                               
+0000204c  debug_st25_fail_step                   
+0000204d  debug_ctrl_user                        
+0000204e  debug_ctrl_data                        
+00002050  debug_eeprom_offset                    
+00002052  debug_eeprom_total_len                 
+00002054  debug_eeprom_chunk_len                 
+00002056  debug_eeprom_fail_reason               
+00002057  demo_result_pending                    
+00002058  debug_max_collect_failed               
+0000205a  debug_max_wait_timeout_count           
+0000205e  debug_st25_eh_ctrl_before              
+0000205f  debug_st25_eh_ctrl_after               
+00002060  debug_st25_eh_mode_before              
+00002061  debug_st25_eh_mode_after               
+00002062  phone_flag                             
+00002064  max_flag                               
 00002f60  _stack                                 
 00003000  __STACK_END                            
 0000c412  __TI_Handler_Table_Base                
@@ -1479,93 +1473,94 @@ address   name
 0000c41a  __TI_Handler_Table_Limit               
 0000c422  __TI_CINIT_Limit                       
 0000c422  __TI_CINIT_Warm                        
-0000c526  __mspabi_divull                        
-0000c874  main                                   
-0000cace  max30002_collect_bioz_average          
-0000ccae  build_bioz_ndef_text_msg               
-0000ce7e  __mspabi_divlli                        
-0000cfba  __TI_decompress_lzss                   
-0000d0a8  st25dv_write_ndef_text_eeprom          
-0000d192  append_url_int32                       
-0000d252  append_url_x10                         
-0000d2d2  max30002_configure_bioz_once           
-0000d342  __TI_auto_init_nobinit_nopinit_hold_wdt
-0000d3ac  st25dv_write_sequence                  
-0000d416  build_ready_url_ndef                   
-0000d478  __mspabi_mpyll_f5hw                    
-0000d4d4  __mspabi_divul                         
-0000d4d4  __mspabi_remul                         
-0000d52c  max30002_read_reg                      
-0000d572  wait_tx_ready_timeout                  
-0000d5b4  __memcpy_far                           
-0000d5f4  __mspabi_srall                         
-0000d634  __mspabi_divli                         
-0000d634  __mspabi_remli                         
-0000d674  __mspabi_slll_15                       
-0000d678  __mspabi_slll_14                       
-0000d67c  __mspabi_slll_13                       
-0000d680  __mspabi_slll_12                       
-0000d684  __mspabi_slll_11                       
-0000d688  __mspabi_slll_10                       
-0000d68c  __mspabi_slll_9                        
-0000d690  __mspabi_slll_8                        
-0000d694  __mspabi_slll_7                        
-0000d698  __mspabi_slll_6                        
-0000d69c  __mspabi_slll_5                        
-0000d6a0  __mspabi_slll_4                        
-0000d6a4  __mspabi_slll_3                        
-0000d6a8  __mspabi_slll_2                        
-0000d6ac  __mspabi_slll_1                        
-0000d6b2  __mspabi_srll_15                       
-0000d6b6  __mspabi_srll_14                       
-0000d6ba  __mspabi_srll_13                       
-0000d6be  __mspabi_srll_12                       
-0000d6c2  __mspabi_srll_11                       
-0000d6c6  __mspabi_srll_10                       
-0000d6ca  __mspabi_srll_9                        
-0000d6ce  __mspabi_srll_8                        
-0000d6d2  __mspabi_srll_7                        
-0000d6d6  __mspabi_srll_6                        
-0000d6da  __mspabi_srll_5                        
-0000d6de  __mspabi_srll_4                        
-0000d6e2  __mspabi_srll_3                        
-0000d6e6  __mspabi_srll_2                        
-0000d6ea  __mspabi_srll_1                        
-0000d6f0  __TI_decompress_none                   
-0000d72c  i2c_bus_recover                        
-0000d768  led_double_pulse                       
-0000d7a4  __mspabi_sllll                         
-0000d7de  __mspabi_srlll                         
-0000d818  bioz_prepare_selected_path             
-0000d84a  max30002_write_reg                     
-0000d87a  led_pulse_transmission                 
-0000d8a0  gpo_init                               
-0000d8c4  max_int_init                           
-0000d8e8  bioz_parse                             
-0000d90a  check_nack                             
-0000d92a  Port_2_ISR                             
-0000d948  _c_int00_noargs                        
-0000d964  append_str                             
-0000d97e  max30002_fifo_reset                    
-0000d998  max30002_synch                         
-0000d9b2  spi_pins_init                          
-0000d9cc  spi_transfer                           
-0000d9e6  max30002_reset                         
-0000d9fe  i2c_init                               
-0000da14  i2c_send_and_check                     
-0000da2a  llabs                                  
-0000da40  spi_init                               
-0000da56  __mspabi_srll                          
-0000da66  i2c_pins_init                          
-0000da74  __TI_ISR_TRAP                          
-0000da7c  error_handler                          
-0000da84  max30002_read_fifo                     
-0000da8c  C$$EXIT                                
-0000da8c  abort                                  
-0000da92  led_idle                               
-0000da98  max30002_read_status                   
-0000da9e  _system_pre_init                       
-0000daa2  _system_post_cinit                     
+0000c550  __mspabi_divull                        
+0000c89e  main                                   
+0000cafc  max30002_collect_bioz_average          
+0000ccdc  build_bioz_ndef_text_msg               
+0000ceac  __mspabi_divlli                        
+0000cfe8  __TI_decompress_lzss                   
+0000d0d6  st25dv_write_ndef_text_eeprom          
+0000d1c0  append_url_int32                       
+0000d280  append_url_x10                         
+0000d300  max30002_configure_bioz_once           
+0000d370  __TI_auto_init_nobinit_nopinit_hold_wdt
+0000d3da  st25dv_write_sequence                  
+0000d444  build_scanning_url_ndef                
+0000d4a6  __mspabi_mpyll_f5hw                    
+0000d502  __mspabi_divul                         
+0000d502  __mspabi_remul                         
+0000d55a  max30002_read_reg                      
+0000d5a0  wait_tx_ready_timeout                  
+0000d5e2  __memcpy_far                           
+0000d622  __mspabi_srall                         
+0000d662  __mspabi_divli                         
+0000d662  __mspabi_remli                         
+0000d6a2  __mspabi_slll_15                       
+0000d6a6  __mspabi_slll_14                       
+0000d6aa  __mspabi_slll_13                       
+0000d6ae  __mspabi_slll_12                       
+0000d6b2  __mspabi_slll_11                       
+0000d6b6  __mspabi_slll_10                       
+0000d6ba  __mspabi_slll_9                        
+0000d6be  __mspabi_slll_8                        
+0000d6c2  __mspabi_slll_7                        
+0000d6c6  __mspabi_slll_6                        
+0000d6ca  __mspabi_slll_5                        
+0000d6ce  __mspabi_slll_4                        
+0000d6d2  __mspabi_slll_3                        
+0000d6d6  __mspabi_slll_2                        
+0000d6da  __mspabi_slll_1                        
+0000d6e0  __mspabi_srll_15                       
+0000d6e4  __mspabi_srll_14                       
+0000d6e8  __mspabi_srll_13                       
+0000d6ec  __mspabi_srll_12                       
+0000d6f0  __mspabi_srll_11                       
+0000d6f4  __mspabi_srll_10                       
+0000d6f8  __mspabi_srll_9                        
+0000d6fc  __mspabi_srll_8                        
+0000d700  __mspabi_srll_7                        
+0000d704  __mspabi_srll_6                        
+0000d708  __mspabi_srll_5                        
+0000d70c  __mspabi_srll_4                        
+0000d710  __mspabi_srll_3                        
+0000d714  __mspabi_srll_2                        
+0000d718  __mspabi_srll_1                        
+0000d71e  __TI_decompress_none                   
+0000d75a  i2c_bus_recover                        
+0000d796  led_double_pulse                       
+0000d7d2  __mspabi_sllll                         
+0000d80c  __mspabi_srlll                         
+0000d846  bioz_prepare_selected_path             
+0000d878  max30002_write_reg                     
+0000d8a8  bioz_mux_init                          
+0000d8d4  led_pulse_transmission                 
+0000d8fa  gpo_init                               
+0000d91e  max_int_init                           
+0000d942  bioz_parse                             
+0000d964  check_nack                             
+0000d984  Port_2_ISR                             
+0000d9a2  _c_int00_noargs                        
+0000d9be  append_str                             
+0000d9d8  max30002_fifo_reset                    
+0000d9f2  max30002_synch                         
+0000da0c  spi_pins_init                          
+0000da26  spi_transfer                           
+0000da40  max30002_reset                         
+0000da58  i2c_init                               
+0000da6e  i2c_send_and_check                     
+0000da84  llabs                                  
+0000da9a  spi_init                               
+0000dab0  __mspabi_srll                          
+0000dac0  i2c_pins_init                          
+0000dace  __TI_ISR_TRAP                          
+0000dad6  error_handler                          
+0000dade  max30002_read_fifo                     
+0000dae6  C$$EXIT                                
+0000dae6  abort                                  
+0000daec  led_idle                               
+0000daf2  max30002_read_status                   
+0000daf8  _system_pre_init                       
+0000dafc  _system_post_cinit                     
 0000ffda  __TI_int41                             
 0000ffdc  __TI_int42                             
 0000ffde  __TI_int43                             
@@ -1590,4 +1585,4 @@ ffffffff  __TI_prof_data_size
 ffffffff  __TI_prof_data_start                   
 ffffffff  __c_args__                             
 
-[632 symbols]
+[629 symbols]

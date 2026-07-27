@@ -248,8 +248,8 @@ __interrupt void Port_2_ISR(void)
 #define ST25DV_EH_MODE_DISABLE_AUTO    BIT0    // bit0 set = auto EH disabled
 
 // URL info
-#define BIOZ_URL_SCANNING "apps.powerapps.com/play/acef55d5-b582-4b23-9945-7312b9c0f7d5?tenantId=d196a604-d993-4028-90df-e223d68126d2&mode=scanning"
-#define BIOZ_URL_RESULT_BASE "apps.powerapps.com/play/acef55d5-b582-4b23-9945-7312b9c0f7d5?tenantId=d196a604-d993-4028-90df-e223d68126d2&mode=result&b="
+#define BIOZ_URL_SCANNING "apps.powerapps.com/play/acef55d5-b582-4b23-9945-7312b9c0f7d5?tenantId=d196a604-d993-4028-90df-e223d68126d2&mode=scanning&skipMobileRedirect=1"
+#define BIOZ_URL_RESULT_BASE "apps.powerapps.com/play/acef55d5-b582-4b23-9945-7312b9c0f7d5?tenantId=d196a604-d993-4028-90df-e223d68126d2&mode=result&skipMobileRedirect=1&b="
 
                                         //
 
