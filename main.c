@@ -60,6 +60,7 @@
 #include <stdio.h>
 #define USE_LPM              0 // 0 = Normal (debug), 1 = low power
 #define BIOZ_LOG_N 128
+
                                 // INTERRUPT HANDLER
 // external interrupts from P2.0 (ST25 GPO): Indicates phone interaction, sets phone_flag
 // external interrupts from P2.1 (MAX30002 INTB): Indicates data ready / FIFO event, sets max_flag
@@ -95,7 +96,7 @@ volatile unsigned int debug_eeprom_offset = 0; // EEPROM chunk offset during NDE
 volatile unsigned int debug_eeprom_total_len = 0; // total TLV length being written
 volatile unsigned int debug_eeprom_chunk_len = 0; // current chunk length
 volatile uint8_t debug_eeprom_fail_reason = 0; // 1=len/null fail, 2=chunk write fail
-volatile uint8_t demo_result_pending = 0; // 0 = next tap measures/writes result, 1 = next tap resets tag to rea
+volatile uint8_t demo_result_pending = 0; // 0 = next NFC read triggers measurement; 1= next NFC read treated as result
 volatile uint8_t debug_max_collect_failed = 0;
 volatile uint32_t debug_max_wait_timeout_count = 0;
 volatile uint8_t debug_st25_eh_ctrl_before = 0;
@@ -210,6 +211,9 @@ __interrupt void Port_2_ISR(void)
 #define BIOZ_SELECT_BASELINE()  (P2OUT &= ~BIOZ_MUX_SEL_BIT)
 #define BIOZ_DISCARD_SAMPLES 64
 #define BIOZ_BLOCK_MISMATCH_LIMIT 500
+#define BIOZ_CAL_OHM_X10_NUM 900
+#define BIOZ_CAL_RAW_DEN 15946
+#define BIOZ_DISPLAY_DEADBAND_OHM_X10 10
 
                                     //
 
@@ -247,9 +251,9 @@ __interrupt void Port_2_ISR(void)
 #define ST25DV_EH_MODE_ENABLE_AUTO     0x00    // bit0 cleared = auto EH enabled
 #define ST25DV_EH_MODE_DISABLE_AUTO    BIT0    // bit0 set = auto EH disabled
 
-// URL info
-#define BIOZ_URL_SCANNING "apps.powerapps.com/play/acef55d5-b582-4b23-9945-7312b9c0f7d5?tenantId=d196a604-d993-4028-90df-e223d68126d2&mode=scanning&skipMobileRedirect=1&hidenavbar=true"
-#define BIOZ_URL_RESULT_BASE "apps.powerapps.com/play/acef55d5-b582-4b23-9945-7312b9c0f7d5?tenantId=d196a604-d993-4028-90df-e223d68126d2&mode=result&skipMobileRedirect=1&hidenavbar=true&b="
+// ReadNFC payload mode. The tag stores short NDEF records for Microsoft Power Apps.
+#define BIOZ_TEXT_SCANNING "BIOZ;mode=scanning"
+#define BIOZ_TEXT_RESULT_BASE "BIOZ;mode=result;b="
 
                                         //
 
@@ -260,7 +264,7 @@ __interrupt void Port_2_ISR(void)
 #define TEST_ST25_WRITE           0
 #define TEST_ST25_READ            0
 #define TEST_ST25_GPO             0
-#define RUN_PHONE_NFC_DEMO         1
+#define RUN_PHONE_NFC_DEMO        1
 
 #define TEST_MAX_SPI              0
 #define TEST_MAX_ID               0
@@ -275,7 +279,6 @@ __interrupt void Port_2_ISR(void)
 #define USE_BIOZ_MUX (TEST_MAX_2SPOT || TEST_MAX_START || TEST_MAX_READ || RUN_PHONE_NFC_DEMO)
 #define USE_EXP430_S1       (TEST_MAX_2SPOT_MANUAL)
 #define USE_MSP_FCLK          0
-#define DEMO_WRITE_SCANNING_ON_BOOT 1
 
 
                                         //
@@ -333,10 +336,10 @@ int32_t max30002_collect_bioz_average(uint16_t sample_goal);
 void button_s1_init(void);
 void wait_for_s1_press(void);
 uint16_t append_str(uint8_t *buf, uint16_t idx, uint16_t max, const char *s);
-uint16_t build_bioz_ndef_text_msg(uint8_t *out, uint16_t max_len, int32_t target_raw, int32_t reference_raw);
 uint16_t append_url_int32(uint8_t buf[], uint16_t idx, uint16_t max, int32_t value);
 uint16_t append_url_x10(uint8_t buf[], uint16_t idx, uint16_t max, int32_t value_x10);
-uint16_t build_scanning_url_ndef(uint8_t out[], uint16_t max_len);
+uint16_t build_bioz_readnfc_text_ndef(uint8_t out[], uint16_t max_len, int32_t target_raw, int32_t reference_raw);
+uint16_t build_scanning_readnfc_text_ndef(uint8_t out[], uint16_t max_len);
 //
 
 int main(void)
@@ -364,34 +367,6 @@ int main(void)
 	#endif
 	gpo_init();
 	max_int_init();
-#if DEMO_WRITE_SCANNING_ON_BOOT
-    {
-        uint8_t msg[260];
-        uint16_t msg_len;
-
-        debug_st25_fail_step = 80; // writing scanning URL at boot
-
-        msg_len = build_scanning_url_ndef(msg, sizeof(msg));
-
-        if (msg_len == 0) {
-            debug_st25_fail_step = 81; // scan URL builder failed at boot
-            error_handler();
-        }
-
-        if (st25dv_write_ndef_text_eeprom(msg, msg_len)) {
-            demo_result_pending = 0;
-            debug_st25_fail_step = 0;
-            led_double_pulse(); // boot scan reset complete
-        }
-        else {
-            debug_st25_fail_step = 82; // scan URL EEPROM write failed at boot
-            error_handler();
-        }
-
-        phone_flag = 0; // clear any stale GPO event from startup
-        P2IFG &= ~BIT0;
-    }
-#endif
 	__enable_interrupt(); // enabling global interrupts
 
 
@@ -430,7 +405,7 @@ int main(void)
 	        led_idle(); // LED stays off
 	    }
 
-#elif RUN_PHONE_NFC_DEMO // Phone tap demo: ready -> scan -> result -> auto reset ready using phone_flag only
+#elif RUN_PHONE_NFC_DEMO // Phone tap demo: app scan --> measure/write result --> app read result
         if (phone_flag) {
             phone_flag = 0;
 
@@ -438,8 +413,8 @@ int main(void)
             uint16_t msg_len;
 
             if (demo_result_pending == 0) {
-                // First tap: user is on scan page.
-                // Wait a bit so phone finishes reading the scan URL, then measure and write result.
+                // First tap: App initiates NFC read; NFC field triggers measurement
+                // MCU measures target/baseline and writes result text to tag.
 
                 int32_t target_avg;
                 int32_t reference_avg;
@@ -493,21 +468,21 @@ int main(void)
                 debug_baseline_bioz = reference_avg;
                 debug_bioz_diff = target_avg - reference_avg;
 
-                debug_st25_fail_step = 67; // BioZ collected, about to build result URL
+                debug_st25_fail_step = 67; // BioZ collected, about to build result
 
-                msg_len = build_bioz_ndef_text_msg(msg, sizeof(msg), target_avg, reference_avg);
+    msg_len = build_bioz_readnfc_text_ndef(msg, sizeof(msg), target_avg, reference_avg);
 
                 if (msg_len == 0) {
-                    debug_st25_fail_step = 61; // result URL builder failed
+                    debug_st25_fail_step = 61; // result builder failed
                     error_handler();
                 }
 
-                debug_st25_fail_step = 62; // result URL built, about to write EEPROM
+                debug_st25_fail_step = 62; // result built, about to write EEPROM
 
                 if (st25dv_write_ndef_text_eeprom(msg, msg_len)) {
                     __delay_cycles(100000);
 
-                    demo_result_pending = 1; // next tap resets to ready
+                    demo_result_pending = 1; // next tap goes to read
                     phone_flag = 0; // clear stale phone event that may have occurred during processing
                     P2IFG &= ~BIT0; // clear stale GPO interrupt flag
 
@@ -520,41 +495,19 @@ int main(void)
                 }
             }
             else {
-                // Second tap: phone is opening the result page.
-                // Wait long enough for user/phone to load result, then reset tag to ready.
+                // Second tap: app reads result text from tag, firmware keeps result on tag and only resets internal state.
 
                 debug_st25_fail_step = 70;
 
-                __delay_cycles(5000000); // 5 sec delay so phone can open/read result URL
+                __delay_cycles(5000000); // allow app time to read result text
 
-                msg_len = build_scanning_url_ndef(msg, sizeof(msg));
-
-                if (msg_len == 0) {
-                    debug_st25_fail_step = 71; // scan URL builder failed
-                    error_handler();
-                }
-
-                debug_st25_fail_step = 72; // scan URL built, about to write EEPROM
-
-                if (st25dv_write_ndef_text_eeprom(msg, msg_len)) {
-                    __delay_cycles(100000);
+                debug_st25_fail_step = 72; // result-read window complete
 
                     demo_result_pending = 0; // next tap measures again
                     phone_flag = 0; // clear stale phone event
                     P2IFG &= ~BIT0; // clear stale GPO interrupt flag
-
                     debug_st25_fail_step = 0;
-                    led_double_pulse(); // two pulses = reset to ready
                 }
-
-                else {
-                    debug_st25_fail_step = 73; // scan EEPROM write failed
-                    error_handler();
-                }
-            }
-        }
-        else {
-            led_idle();
         }
 
     #elif TEST_MAX_SPI // TEST 5: Basic MAX30002 SPI connection test. Checks to see if reads anything from INFO
@@ -797,27 +750,6 @@ int main(void)
 
 	led_pulse_transmission(); // pulse for success in baseline measurement
 	__delay_cycles(1000000);
-
-#elif TEST_BUILD_BIOZ_MSG_ONLY
-    // No-hardware test.
-    // This only tests whether the BIOZ NDEF text message is built correctly.
-    // It does not use MAX hardware and does not use ST25 hardware.
-
-    demo_msg_len = build_bioz_ndef_text_msg((uint8_t *)demo_msg,
-                                            sizeof(demo_msg),
-                                            demo_fake_target,
-                                            demo_fake_reference);
-
-    if (demo_msg_len == 0) {
-        error_handler();
-    }
-
-    led_pulse_transmission();
-
-    while (1) {
-        // Hold here so CCS can inspect demo_msg and demo_msg_len.
-    }
-
 
     #endif // ends test chain
     #endif // end program
@@ -1547,77 +1479,140 @@ uint16_t append_url_x10(uint8_t buf[], uint16_t idx, uint16_t max, int32_t value
     return idx;
 }
 
-uint16_t build_bioz_ndef_text_msg(uint8_t out[], uint16_t max_len, int32_t target_raw, int32_t reference_raw)
+uint16_t build_bioz_readnfc_text_ndef(uint8_t out[], uint16_t max_len, int32_t target_raw, int32_t reference_raw)
 {
-    uint8_t uri[256];
-    uint16_t ui = 0;
+    uint8_t text[128];
+    uint16_t ti = 0;
     uint16_t i;
+    uint16_t text_len;
     uint16_t payload_len;
     uint16_t total_len;
+
     int32_t diff;
     int32_t percent;
     int32_t zdiff_x10;
+    int32_t target_mag;
+    int32_t reference_mag;
+    int32_t target_ohm_x10;
+    int32_t reference_ohm_x10;
+    int32_t display_zero;
 
-    diff = target_raw - reference_raw;
+    target_mag = target_raw;
+    reference_mag = reference_raw;
 
-    if (reference_raw != 0) {
-        percent = (int32_t)(((int64_t)diff * 100) / reference_raw);
+    if (target_mag < 0) {
+        target_mag = -target_mag; // keep abs
+    }
+    if (reference_mag < 0) {
+        reference_mag = -reference_mag; // keep abs
+    }
+    diff = target_mag - reference_mag; // compare magnitudes for user-facing result.
+
+    // Approx ohm difference, target, baseline in tenths using resistor calibration. ohms_x10 = diff * 900 / 15946. (i.e. 10 means +1.0 ohm)
+    zdiff_x10 = (int32_t)(((int64_t)diff * BIOZ_CAL_OHM_X10_NUM) / BIOZ_CAL_RAW_DEN);
+    target_ohm_x10 = (int32_t)(((int64_t)target_mag * BIOZ_CAL_OHM_X10_NUM) / BIOZ_CAL_RAW_DEN);
+    reference_ohm_x10 = (int32_t)(((int64_t)reference_mag * BIOZ_CAL_OHM_X10_NUM) / BIOZ_CAL_RAW_DEN);
+
+    {
+    int32_t abs_zdiff_x10;
+    abs_zdiff_x10 = zdiff_x10;
+    if (abs_zdiff_x10 < 0) {
+    abs_zdiff_x10 = -abs_zdiff_x10;
+    }
+    if (abs_zdiff_x10 < BIOZ_DISPLAY_DEADBAND_OHM_X10) { // checking deadband (anything < 1.0 ohm considered 0% difference)
+    percent = 0;
+    display_zero = 1;
+    }
+
+    else {
+    display_zero = 0;
+    if (reference_mag != 0) {
+    percent = (int32_t)(((int64_t)diff * 100) / reference_mag);
     }
     else {
-        percent = 0;
+    percent = 0;
     }
+    }
+    }
+    // Build simple text payload:
+    // BIOZ;mode=result;b=0;d=-787;o=-4.4;t=318655;r=319442;to=...;ro=...;z=...
+    ti = append_str(text, ti, sizeof(text), BIOZ_TEXT_RESULT_BASE);
+    ti = append_url_int32(text, ti, sizeof(text), percent);
 
-    zdiff_x10 = (int32_t)(((int64_t)diff * 900) / 15946);
+    ti = append_str(text, ti, sizeof(text), ";d=");
+    ti = append_url_int32(text, ti, sizeof(text), diff);
 
-    uri[ui++] = 0x04; // URI prefix code for https://
+    ti = append_str(text, ti, sizeof(text), ";o=");
+    ti = append_url_x10(text, ti, sizeof(text), zdiff_x10);
 
-    ui = append_str(uri, ui, sizeof(uri), BIOZ_URL_RESULT_BASE);
-    ui = append_url_int32(uri, ui, sizeof(uri), percent);
+    ti = append_str(text, ti, sizeof(text), ";t=");
+    ti = append_url_int32(text, ti, sizeof(text), target_mag);
 
-    ui = append_str(uri, ui, sizeof(uri), "&d=");
-    ui = append_url_int32(uri, ui, sizeof(uri), diff);
+    ti = append_str(text, ti, sizeof(text), ";r=");
+    ti = append_url_int32(text, ti, sizeof(text), reference_mag);
 
-    ui = append_str(uri, ui, sizeof(uri), "&o=");
-    ui = append_url_x10(uri, ui, sizeof(uri), zdiff_x10);
+    ti = append_str(text, ti, sizeof(text), ";to=");
+    ti = append_url_x10(text, ti, sizeof(text), target_ohm_x10);
 
-    ui = append_str(uri, ui, sizeof(uri), "&t=");
-    ui = append_url_int32(uri, ui, sizeof(uri), target_raw);
+    ti = append_str(text, ti, sizeof(text), ";ro=");
+    ti = append_url_x10(text, ti, sizeof(text), reference_ohm_x10);
 
-    ui = append_str(uri, ui, sizeof(uri), "&r=");
-    ui = append_url_int32(uri, ui, sizeof(uri), reference_raw);
+    ti = append_str(text, ti, sizeof(text), ";z=");
+    ti = append_url_int32(text, ti, sizeof(text), display_zero);
 
-    payload_len = ui;
+    text_len = ti;
+
+    /*
+     * NDEF Text record format:
+     * Header: 0xD1
+     * Type length: 1
+     * Payload length: 1 status byte + 2 language bytes + text length
+     * Type: 'T'
+     * Payload:
+     *   status byte = 0x02 means UTF-8, language code length 2
+     *   language = "en"
+     *   actual text payload
+     */
+    payload_len = 1 + 2 + text_len;
     total_len = 4 + payload_len;
 
     if (total_len > max_len || payload_len > 255) {
         return 0;
     }
 
-    out[0] = 0xD1; // NDEF short record, MB/ME/SR set, well-known type
-    out[1] = 0x01; // type length
-    out[2] = (uint8_t)payload_len; // URI payload length
-    out[3] = 'U'; // URI record type
+    out[0] = 0xD1;                 // MB/ME/SR set, well-known record
+    out[1] = 0x01;                 // type length = 1
+    out[2] = (uint8_t)payload_len; // short record payload length
+    out[3] = 'T';                  // NDEF Text record type
 
-    for (i = 0; i < payload_len; i++) {
-        out[4 + i] = uri[i];
+    out[4] = 0x02;                 // UTF-8, language code length = 2
+    out[5] = 'e';
+    out[6] = 'n';
+
+    for (i = 0; i < text_len; i++) {
+        out[7 + i] = text[i];
     }
 
     return total_len;
 }
 
-uint16_t build_scanning_url_ndef(uint8_t out[], uint16_t max_len) // program back to scan mode before demo
+uint16_t build_scanning_readnfc_text_ndef(uint8_t out[], uint16_t max_len)
 {
-    uint8_t uri[220];
-    uint16_t ui = 0;
+    uint8_t text[40];
+    uint16_t ti = 0;
     uint16_t i;
+    uint16_t text_len;
     uint16_t payload_len;
     uint16_t total_len;
 
-    uri[ui++] = 0x04; // URI prefix code for https://
+    // Simple first-read payload.
+    // Power Apps does not really need to parse this deeply;
+    // the main purpose is to energize/trigger the patch.
+    ti = append_str(text, ti, sizeof(text), BIOZ_TEXT_SCANNING);
 
-    ui = append_str(uri, ui, sizeof(uri), BIOZ_URL_SCANNING);
+    text_len = ti;
 
-    payload_len = ui;
+    payload_len = 1 + 2 + text_len;
     total_len = 4 + payload_len;
 
     if (total_len > max_len || payload_len > 255) {
@@ -1627,10 +1622,14 @@ uint16_t build_scanning_url_ndef(uint8_t out[], uint16_t max_len) // program bac
     out[0] = 0xD1;
     out[1] = 0x01;
     out[2] = (uint8_t)payload_len;
-    out[3] = 'U';
+    out[3] = 'T';
 
-    for (i = 0; i < payload_len; i++) {
-        out[4 + i] = uri[i];
+    out[4] = 0x02; // UTF-8, language code length = 2
+    out[5] = 'e';
+    out[6] = 'n';
+
+    for (i = 0; i < text_len; i++) {
+        out[7 + i] = text[i];
     }
 
     return total_len;
@@ -1655,7 +1654,7 @@ void error_handler (void) { // ensures LED is solid during error
     while(1); // LED stays permanently on with error
 }
 
-void led_double_pulse(void) // single pulse = result written, double = tag reset to ready
+void led_double_pulse(void) // double pulse = internal state reset
 {
     LED_ON();
     __delay_cycles(180000);
