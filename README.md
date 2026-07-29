@@ -283,7 +283,7 @@ verifies interrupt path and phone detection
 
 The LED is used as a simple status indicator.
 - LED pulses once if transmission or measurement step occurs successfully
-- LED blinks on and off if measurement is occurring
+- For most test functions (excluding RUN_PHONE_NFC DEMO): LED blinks on and off if measurement is occurring
 - LED stays solid if error
 - LED is off if IDLE/SLEEP
 
